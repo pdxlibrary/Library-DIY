@@ -1,0 +1,174 @@
+<?php
+/**
+ * @file
+ * Provide custom breadcrumbs for views pages.
+ */
+module_load_include('inc', 'custom_breadcrumbs', 'custom_breadcrumbs.admin');
+module_load_include('inc', 'custom_breadcrumbs', 'custom_breadcrumbs_common');
+
+/**
+ * Implements hook_cb_breadcrumb_info().
+ *
+ * @return an array with elements:
+ *   'table' indicating the db_table to load the breadcrumb from,
+ *   'field' a unique field of the database table used to identify the breadcrumb,
+ *   'type' a string used for indicating the breadcrumb type on the admin list,
+ *   'name_constructor' a function which generates the breadcrumb name from the breadcrumb.
+ */
+function custom_breadcrumbs_views_cb_breadcrumb_info() {
+  $breadcrumb_type_info = array();
+  $breadcrumb_type_info['views'] = array(
+    'table' => 'custom_breadcrumbs_views',
+    'field' => 'views_path',
+    'type' => 'views',
+    'name_constructor' => '_custom_breadcrumbs_views_breadcrumb_name',
+  );
+  return $breadcrumb_type_info;
+}
+
+/**
+ * Constructs a default name to display in the admin screen.
+ *
+ * @param $breadcrumb
+ *   The breadcrumb object.
+ *
+ * @return
+ *   A text string that will be used as the breadcrumb name.
+ */
+function _custom_breadcrumbs_views_breadcrumb_name($breadcrumb) {
+  if (isset($breadcrumb->views_path)) {
+    return $breadcrumb->views_path;
+  }
+}
+
+/**
+ * Implements hook_menu().
+ */
+function custom_breadcrumbs_views_menu() {
+  $items = array();
+
+  $items['admin/structure/custom_breadcrumbs/views/add'] = array(
+    'title' => 'Views',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('custom_breadcrumbs_views_form', 'views'),
+    'access callback' => 'user_access',
+    'access arguments' => array('administer custom breadcrumbs'),
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 5,
+  );
+
+  $items['admin/structure/custom_breadcrumbs/views/edit'] = array(
+    'title' => 'Edit custom breadcrumb for views',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('custom_breadcrumbs_views_form', 'views'),
+    'access callback' => 'user_access',
+    'access arguments' => array('administer custom breadcrumbs'),
+    'type' => MENU_CALLBACK,
+  );
+  return $items;
+}
+
+/**
+ * Implements hook_views_pre_render().
+ */
+function custom_breadcrumbs_views_views_pre_render(&$view) {
+  // Don't really do anything with the view. This is just a pretense to insert a breadcrumb.
+  global $language;
+  $languages = array(
+    'language' => $language->language,
+    'all' => '',
+  );
+
+  $curpath = drupal_get_normal_path($_GET['q']);
+  // Check to see if the view path matches the current path.
+  foreach ($view->display as $id => $display) {
+    // Identify allowed displays for breadcrumb replacement.
+    if (!_custom_breadcrumbs_allowed_display($display)) {
+      continue;
+    }
+    $viewpath = _custom_breadcrumbs_construct_view_path($display);
+    if (_custom_breadcrumbs_match_path($curpath, $viewpath)) {
+      $loadpath = $display->display_options['path'];
+      $breadcrumbs = custom_breadcrumbs_load_breadcrumbs('custom_breadcrumbs_views', NULL, array('views_path' => $loadpath), $languages);
+      if (!empty($breadcrumbs)) {
+        if ($breadcrumb = custom_breadcrumbs_select_breadcrumb($breadcrumbs, array('view' => $view))) {
+          // Select breadcrumb for the matching display with the greatest number of explicit arguments.
+          $num = substr_count($breadcrumb->views_path, '%');
+          if (!isset($max) || (isset($max) && ($num > $max))) {
+            $max = $num;
+            $candidate = $breadcrumb;
+            $max_id = $id;
+          }
+        }
+      }
+    }
+  }
+  if (isset($candidate)) {
+    $objs = _custom_breadcrumbs_views_token_types($view->display[$max_id]);
+    $objs['view'] = $view;
+    if (!isset($objs['node']) && isset($view->result[0]->nid)) {
+      $node = node_load($view->result[0]->nid);
+      $objs['node'] = $node;
+    }
+    custom_breadcrumbs_set_breadcrumb($candidate, $objs);
+    return;
+  }
+  if (variable_get('custom_breadcrumbs_set_menu_breadcrumb', FALSE) && (!custom_breadcrumbs_exclude_path())) {
+    // If a views breadcrumb has not been defined for this view, then use the default menu structure.
+    custom_breadcrumbs_set_menu_breadcrumb();
+  }
+}
+
+/**
+ * Form builder; Displays an edit form for a views breadcrumb.
+ *
+ * @param $type
+ *   The type of custom breadcrumb to edit.
+ *
+ * @ingroup forms
+ * @see custom_breadcrumbs_form_validate()
+ * @see custom_breadcrumbs_form_submit()
+ */
+function custom_breadcrumbs_views_form($form, &$form_state, $type) {
+  $form = array();
+  $breadcrumb = NULL;
+  $bid = arg(5);
+  if (isset($bid)) {
+    drupal_set_title(t('Edit Custom Breadcrumb for View'));
+    $breadcrumbs = custom_breadcrumbs_load_breadcrumbs('custom_breadcrumbs_views', NULL, array('bid' => $bid));
+    $breadcrumb = array_pop($breadcrumbs);
+  }
+  else {
+    drupal_set_title(t('Add Custom Breadcrumb for View'));
+  }
+  $options = array();
+  $views =  views_get_all_views();
+  foreach ($views as $view) {
+    if (!isset($view->disabled) || (isset($view->disabled) && !$view->disabled)) {
+      foreach ($view->display as $display) {
+        if (_custom_breadcrumbs_allowed_display($display)) {
+          $name = $display->display_options['path'];
+          $options[$name] = $name;
+        }
+      }
+    }
+  }
+  $form['views_path'] = array(
+    '#type' => 'select',
+    '#title' => t('Views Path'),
+    '#required' => TRUE,
+    '#options' => $options,
+    '#description' => t('The path to the view that this custom breadcrumb trail will apply to.'),
+    '#default_value' => isset($breadcrumb->views_path) ? $breadcrumb->views_path : NULL,
+    '#weight' => -10,
+  );
+  // Store information needed to save this breadcrumb.
+  $form['#module'] = 'custom_breadcrumbs_views';
+  $form['#infokey'] = 'views';
+  $form += custom_breadcrumbs_common_form_elements($bid, $breadcrumb);
+  $form['visibility_php']['#description'] = t('Determine whether this breadcrumb should be displayed by using a PHP snippet to return TRUE or FALSE. Do not use opening and closing php tags.');
+  $form['#submit'][] = 'custom_breadcrumbs_form_submit';
+  $form['#validate'][] = 'custom_breadcrumbs_form_validate';
+
+  return $form;
+}

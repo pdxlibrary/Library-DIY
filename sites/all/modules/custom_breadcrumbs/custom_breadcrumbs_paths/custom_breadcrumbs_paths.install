@@ -1,0 +1,136 @@
+<?php
+
+/**
+ * @file
+ * Install file for the custom_breadcrumbs module.
+ */
+
+/**
+ * Implements hook_install().
+ */
+function custom_breadcrumbs_paths_install() {
+
+  // Search for Paths breadcrumbs in existing {custom_breadcrumb} and copy to new table.
+  drupal_set_message(t('Looking for Specify Path breadcrumbs to copy from {custom_breadcrumb}...'));
+  $result = db_query("SELECT * FROM {custom_breadcrumb} WHERE node_type = :node_type", array(':node_type' => 'Specify Path'));
+  $found = 0;
+  foreach ($result as $breadcrumb) {
+    $start = strpos($breadcrumb->paths, "\n");
+    $specific_path = drupal_substr($breadcrumb->paths, 0, $start);
+    $title = drupal_substr($breadcrumb->titles, strpos($breadcrumb->titles, "\n") + 1);
+    $newpath = drupal_substr($breadcrumb->paths, strpos($breadcrumb->paths, "\n") + 1);
+    $id = db_insert('custom_breadcrumbs_paths')
+      ->fields(array(
+        'titles' => $title,
+        'paths' => $newpath,
+        'visibility_php' => $breadcrumb->visibility_php,
+        'specific_path' => $specific_path,
+        'set_active_menu' => $breadcrumb->set_active_menu,
+        'language' => $breadcrumb->language,
+      ))
+      ->execute();
+    drupal_set_message('Copied path ' . $specific_path . ' to {custom_breadcrumbs_paths}.' );
+    ++$found;
+  }
+  if ($found > 0) {
+    drupal_set_message(format_plural($found, 'Copied 1 breadcrumb.', 'Copied @count breadcrumbs.'));
+    drupal_set_message(t('You can now delete the old Specify Path breadcrumb from <a href="@link">admin/structure/custom_breadcrumbs</a>. They will be listed with title Specify Path and page type node.', array('@link' => url('admin/structure/custom_breadcrumbs'))));
+  }
+  else {
+    drupal_set_message(t('No Specify Path breadcrumbs were found in {custom_breadcrumb}'));
+  }
+}
+
+/**
+ * Implements hook_schema().
+ */
+function custom_breadcrumbs_paths_schema() {
+  $schema['custom_breadcrumbs_paths'] = array(
+    'description' => 'Stores custom breadcrumb trails for specific paths.',
+    'fields' => array(
+      'bid' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'Unique identifier for the {custom_breadcrumbs_views}.',
+      ),
+      'name' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => FALSE,
+        'description' => 'An optional name for the custom breadcrumb.',
+      ),
+      'titles' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'A return-delimited list of titles for the breadcrumb links.',
+      ),
+      'paths' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+        'description' => 'A return-delimited list of url paths for the breadcrumb links.',
+      ),
+      'visibility_php' => array(
+        'type' => 'text',
+        'not null' => TRUE,
+        'size' => 'medium',
+        'description' => 'An optional PHP snippet to control the {custom_breadcrumbs_views} visibility.',
+      ),
+      'specific_path' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'description' => 'Path to the view for this custom breadcrumb.',
+      ),
+      'language' => array(
+        'type' => 'varchar',
+        'length' => 12,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The language this breadcrumb is for; if blank, the breadcrumb will be used for unknown languages.',
+      ),
+    ),
+    'indexes' => array(
+      'language' => array('language'),
+      'path_language' => array('specific_path', 'language'),
+    ),
+    'primary key' => array('bid'),
+  );
+  return $schema;
+}
+
+/**
+ * Adds indices to custom_breadcrumb_paths table to improve performance.
+ */
+function custom_breadcrumbs_paths_update_6000() {
+  db_add_index('custom_breadcrumbs_paths', 'language', array('language'));
+  db_add_index('custom_breadcrumbs_paths', 'path_language', array('specific_path', 'language'));
+  return t('Added indices to custom_breadcrumbs_paths database table to improve performance.');
+}
+
+/**
+ * Adds name field for improved organization of breadcrumbs
+ * Remove set_active_menu field because it is no longer used.
+ */
+function custom_breadcrumbs_paths_update_6200() {
+  $field = array(
+    'type' => 'varchar',
+    'length' => 128,
+    'NOT NULL' => FALSE,
+    'description' => 'An optional name for the custom breadcrumb.',
+  );
+  db_add_field('custom_breadcrumbs_paths', 'name', $field);
+  db_drop_field('custom_breadcrumbs_paths', 'set_active_menu');
+  return t('Added name field and dropped set_active_menu field from the custom_breadcrumbs_paths database.');
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function custom_breadcrumbs_paths_uninstall() {
+  // Remove persistent variables.
+  variable_del('custom_breadcrumbs_paths_allow_wildcards');
+}

@@ -1,0 +1,1127 @@
+<?php
+
+/**
+ * @file
+ * Handles core Fusion Apply functionality.
+ */
+
+/**
+ * The Fusion Apply API version.
+ */
+define('fusion_apply_VERSION', 2);
+
+/**
+ * Implements hook_help().
+ */
+function fusion_apply_help($path, $arg) {
+  switch ($path) {
+    case 'admin/help#fusion':
+      if (module_exists('advanced_help')) {
+        return t('Visit the <a href="@fusion-help">help page</a> for full documentation.', array('@fusion-help' => url('admin/advanced_help/fusion')));
+      }
+      else {
+        return t('Please download and enable the <a href="http://drupal.org/project/advanced_help">Advanced Help</a> module for full Fusion documentation.');
+      }
+      break;
+  }
+}
+
+/**
+ * Implements hook_hook_info().
+ */
+function fusion_apply_hook_info() {
+  $hooks = array(
+    'fusion_apply_api_2',
+  );
+  $hooks = array_fill_keys($hooks, array(
+    'group' => 'fusion_apply',
+  ));
+  return $hooks;
+}
+
+/**
+ * Clears cached Fusion information.
+ */
+function fusion_apply_cache_reset() {
+  cache_clear_all('fusion_apply_', 'cache', TRUE);
+}
+
+/**
+ * Implements hook_module_implements_alter().
+ */
+function fusion_apply_module_implements_alter(&$implementations, $hook) {
+  // Run Fusion Apply first to avoid issues with other modules during hook_init().
+  if ($hook == 'init') {
+    $fusion_apply['fusion_apply'] = $implementations['fusion_apply'];
+    unset($implementations['fusion_apply']);
+    $implementations = array_merge($fusion_apply, $implementations);
+  }
+}
+
+/**
+ * Implements hook_init().
+ *
+ * @todo Kill me. Entirely.
+ */
+function fusion_apply_init() {
+  module_load_include('inc', 'fusion_apply', 'fusion_apply.handlers');
+  fusion_apply_load_includes();
+}
+
+/**
+ * Implements hook_preprocess().
+ *
+ * @todo Optimize this function by removing dependencies on
+ *   fusion_apply_get_skin_info() and similar resource heavy functions.
+ * @todo Account for Drupal's caching being enabled and make it work.
+ */
+function fusion_apply_preprocess(&$variables, $hook) {
+  // Fix for update script.
+  if ($hook == 'maintenance_page') {
+    return;
+  }
+
+  $config = fusion_apply_get_config_info();
+  $current_theme = fusion_apply_current_theme();
+  $theme_registry = theme_get_registry();
+  $skin_info = fusion_apply_get_skin_info();
+
+  $original_hook = (isset($theme_registry[$hook]['original hook']) ? $theme_registry[$hook]['original hook'] : $hook);
+
+  foreach ($config as $module => $module_settings) {
+    if (!empty($module_settings['preprocess'][$original_hook])) {
+      $preprocess_settings = $module_settings['preprocess'][$original_hook];
+      $elements = fusion_apply_handler('preprocess_index_handler', 'preprocess', $preprocess_settings['index_handler'], $variables);
+      if (empty($elements)) {
+        // We can receive empty arrays; if that happens, there's no point in continuing.
+        continue;
+      }
+
+      // Get a list of skin configuration IDs to pass to
+      // fusion_apply_skin_load_multiple().
+      $params = array(
+        'theme' => $current_theme,
+        'module' => $module,
+        'element' => $elements,
+        'status' => 1,
+      );
+      $sids = fusion_apply_skin_get_sids($params);
+      if (empty($sids)) {
+        // Nothing to apply.
+        continue;
+      }
+
+      $applied_skins = array();
+      foreach (fusion_apply_skin_load_multiple($sids) as $skin) {
+        $applied_skins = array($skin->skin => $skin->options) + $applied_skins;
+      }
+
+      // Invoke hook_fusion_apply_preprocess_alter() in all modules.
+      // @todo Review whether this alter hook is useful or not, and if it's in
+      //   the right place or not.
+      $context = array(
+        'hook' => $hook,
+        'variables' => &$variables,
+        'theme' => $current_theme,
+        'module' => $module,
+        'elements' => $elements,
+        'options' => $applied_skins,
+      );
+      drupal_alter('fusion_apply_preprocess', $context);
+
+      // Use drupal_process_attached() to add attachements such as JS and CSS.
+      if (!empty($applied_skins)) {
+        foreach ($applied_skins as $skin_name => $skin_options) {
+
+          // Special case for _additional.
+          if ($skin_name == '_additional') {
+            continue;
+          }
+
+          // Make sure this skin is enabled for the current theme.
+          if (isset($skin_info[$skin_name]['attached'])) {
+            $elements['#attached'] = $skin_info[$skin_name]['attached'];
+            drupal_process_attached($elements);
+          }
+
+          if (!is_array($skin_options)) {
+            $skin_options = array($skin_options);
+          }
+          foreach ($skin_options as $skin_option) {
+            if (isset($skin_info[$skin_name]['options'][$skin_option]['attached'])) {
+              $elements['#attached'] = $skin_info[$skin_name]['options'][$skin_option]['attached'];
+              drupal_process_attached($elements);
+            }
+          }
+        }
+
+        $variables['classes_array'] = array_merge($variables['classes_array'], fusion_apply_flatten_skins_array($applied_skins));
+      }
+    }
+  }
+}
+
+/**
+ * Returns an array of classes.
+ *
+ * @param $skin_options
+ *   An array of skin options keyed by their skin name. The key '_additional'
+ *   is reserved for additional classes entered by the user.
+ *
+ * @todo Optimize this function by removing dependencies on the resource heavy
+ *   fusion_apply_get_skin_info() function.
+ * @todo Rename function to reflect new functionality.
+ */
+function fusion_apply_flatten_skins_array($skin_options) {
+  $skin_info = fusion_apply_get_skin_info();
+
+  $classes = array();
+  foreach ($skin_options as $skin_name => $options) {
+    if ($skin_name == '_additional') {
+      $classes = array_merge($classes, $options);
+    }
+    else {
+      foreach ($options as $option) {
+        if (!empty($skin_info[$skin_name]['options'][$option]['class'])) {
+          $classes = array_merge($classes, $skin_info[$skin_name]['options'][$option]['class']);
+        }
+      }
+    }
+  }
+  return array_unique($classes);
+}
+
+/**
+ * Returns a list of extensions that implement this API version of Fusion Apply.
+ *
+ * @return
+ *   An associative array whose keys are system names of extensions and whose
+ *   values are again associative arrays containing:
+ *   - type: Either 'module' or 'theme'.
+ *   - name: The system name of the extension.
+ *   - path: The path to the extension.
+ *   - directory: (optional) The sub-directory holding Fusion plugin files.
+ *   - ...: Any other properties defined by the module or theme.
+ *
+ * @todo Cache this.
+ */
+function fusion_apply_implements() {
+  $cache = &drupal_static(__FUNCTION__);
+
+  if (!isset($cache)) {
+    $cache = array();
+    // Collect hook_fusion_apply_api_VERSION() module implementations. This will also
+    // auto-load $module.fusion_apply.inc files, which may contain skin/group hook
+    // implementations (when not using the plugin system).
+    $module_info = system_get_info('module');
+    foreach (module_implements('fusion_apply_api_' . fusion_apply_VERSION) as $module) {
+      // Ensure that $module and the extension type is registered.
+      $cache[$module] = array(
+        'type' => 'module',
+        'name' => $module,
+        'version' => isset($module_info[$module]['version']) ? $module_info[$module]['version'] : NULL,
+      );
+      // Check whether the hook returns any information.
+      $function = $module . '_fusion_apply_api_' . fusion_apply_VERSION;
+      $info = $function();
+      if (isset($info) && is_array($info)) {
+        $cache[$module] += $info;
+      }
+      // If the module specified a custom path, check whether it contains a
+      // $module.fusion.inc file and auto-load it. module_implements() only
+      // auto-loads $module.fusion.inc in a module's root folder.
+      if (isset($cache[$module]['path'])) {
+        $file = DRUPAL_ROOT . '/' . $cache[$module]['path'] . '/' . $module . '.fusion.inc';
+        if (file_exists($file)) {
+          require_once $file;
+        }
+      }
+      // Populate defaults.
+      $cache[$module] += array(
+        'path' => drupal_get_path('module', $module),
+        'directory' => NULL,
+      );
+    }
+    // Collect the equivalent of hook_fusion_apply_api_VERSION() implementations in
+    // themes. The theme system only initializes one theme (and optionally its
+    // base themes) for the current request, and the phptemplate engine only
+    // loads template.php during theme initialization. Furthermore, template.php
+    // is a custom concept of the phptemplate engine and does not exist for
+    // other theme engines. Since we are interested in all existing
+    // implementations of all enabled themes, the equivalent of the module hook
+    // is a theme .info file property 'fusion' that has the sub-keys 'api' and
+    // optionally 'directory' defined.
+    // Account for all enabled themes and (any recursive) base themes of them,
+    // regardless of whether base themes are enabled.
+    $all_themes = list_themes();
+    $themes = array();
+    // Additionally record the base themes and sub themes of each theme, in
+    // order to apply inheritance rules elsewhere. Do not assign these variables
+    // as properties on the theme objects themselves, since all objects are
+    // pointers (much like references) in PHP 5, so our properties would be
+    // visible for everyone else who calls list_themes().
+    $base_themes = array();
+    $sub_themes = array();
+    foreach ($all_themes as $name => $theme) {
+      // If the theme is enabled, add it to the stack.
+      if (!empty($theme->status)) {
+        $themes[$name] = $theme;
+        // Find and add all base themes of the enabled theme to the stack.
+        // @see drupal_theme_initialize()
+        $sub_theme_name = $name;
+        while ($name && isset($all_themes[$name]->base_theme)) {
+          // Record the sub theme for the base theme.
+          $sub_themes[$all_themes[$name]->base_theme][$name] = $name;
+
+          // Add the base theme to the stack.
+          $name = $all_themes[$name]->base_theme;
+          $themes[$name] = $all_themes[$name];
+
+          // Record the base theme for the original sub theme.
+          $base_themes[$sub_theme_name][$name] = $name;
+        }
+      }
+    }
+    foreach ($themes as $name => $theme) {
+      if (isset($theme->info['fusion']['api']) && $theme->info['fusion']['api'] == fusion_apply_VERSION) {
+        // Ensure that the theme name and the extension type is registered.
+        $cache[$name] = array(
+          'type' => 'theme',
+          'name' => $name,
+          'version' => isset($theme->info['version']) ? $theme->info['version'] : NULL,
+          'base themes' => isset($base_themes[$name]) ? $base_themes[$name] : array(),
+          'sub themes' => isset($sub_themes[$name]) ? $sub_themes[$name] : array(),
+        );
+        // Add any additional information that has been registered.
+        $cache[$name] += $theme->info['fusion'];
+        // Populate defaults.
+        $cache[$name] += array(
+          'path' => drupal_get_path('theme', $name),
+          // Since themes cannot do anything else than registering skins and
+          // groups, we default to the sub-directory 'skins'.
+          'directory' => 'skins',
+        );
+        // Lastly, for API consistency with modules, check whether the theme
+        // contains a $theme.fusion.inc file and auto-load it, if any.
+        $file = DRUPAL_ROOT . '/' . $cache[$name]['path'] . '/' . $name . '.fusion.inc';
+        if (file_exists($file)) {
+          require_once $file;
+        }
+      }
+    }
+  }
+
+  return $cache;
+}
+
+/**
+ * Includes $extension.fusion.inc files of extensions compatible with this version of Fusion Apply.
+ *
+ * @todo Shoot me. Twice.
+ */
+function fusion_apply_load_includes() {
+  foreach (fusion_apply_implements() as $extension) {
+    $file = DRUPAL_ROOT . '/' . $extension['path'] . '/' . $extension['name'] . '.fusion.inc';
+    if (file_exists($file)) {
+      require_once $file;
+    }
+  }
+}
+
+/**
+ * Includes Fusion Apply plugin files for an extension, if any.
+ *
+ * @param $extension
+ *   The API information for an extension, as returned by fusion_apply_implements().
+ */
+function fusion_apply_load_plugins($extension) {
+  static $loaded = array();
+
+  // If plugins have already been loaded for this extension, return them.
+  if (isset($loaded[$extension['name']])) {
+    return $loaded[$extension['name']];
+  }
+  $loaded[$extension['name']] = array();
+
+  // If the extension defines a plugin directory, scan its plugins.
+  if (isset($extension['directory'])) {
+    $dir = DRUPAL_ROOT . '/' . $extension['path'] . '/' . $extension['directory'];
+    $mask = '@^' . DRUPAL_PHP_FUNCTION_PATTERN . '\.inc$@';
+    $loaded[$extension['name']] = file_scan_directory($dir, $mask, array(
+      'key' => 'name',
+      'recurse' => TRUE,
+      'min_depth' => 1,
+      'callback' => 'fusion_apply_include_once',
+    ));
+  }
+  return $loaded[$extension['name']];
+}
+
+/**
+ * file_scan_directory() callback wrapper around include_once.
+ *
+ * include_once is a PHP construct, not a function, so it cannot be invoked
+ * directly as 'callback' in file_scan_directory().
+ */
+function fusion_apply_include_once($file) {
+  include_once $file;
+}
+
+// -----------------------------------------------------------------------
+// Fusion Apply data handling functions.
+
+/**
+ * Validate a skin object.
+ *
+ * @param $skin
+ *   A skin object.
+ *
+ * @return
+ *   TRUE on success, FALSE on failure.
+ */
+function fusion_apply_skin_validate(&$skin) {
+  if (empty($skin->theme) || empty($skin->module) || empty($skin->element) || empty($skin->skin) || empty($skin->options)) {
+    return FALSE;
+  }
+  if (!is_array($skin->options)) {
+    return FALSE;
+  }
+
+  // Strip empty skins.
+  $skin->options = _fusion_apply_array_strip_empty($skin->options);
+  if (empty($skin->options)) {
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+/**
+ * Save a skin object.
+ *
+ * @param $skin
+ *   A skin object.
+ *
+ * @return
+ *   TRUE on success, FALSE on failure.
+ */
+function fusion_apply_skin_save(&$skin) {
+  // Make sure we're getting valid data.
+  if (!fusion_apply_skin_validate($skin)) {
+    return FALSE;
+  }
+
+  // Load the stored skin configuration object, if any.
+  if (!empty($skin->sid)) {
+    if (!isset($skin->original)) {
+      // Load an uncached version of the skin configuration object.
+      $skin->original = fusion_apply_skin_load_unchanged($skin->sid);
+    }
+  }
+  
+  // Let modules modify the node before it is saved to the database.
+  module_invoke_all('fusion_apply_skin_presave', $skin);
+
+  if (!empty($skin->sid)) {
+    // Record exists, so let's update.
+    $status = drupal_write_record('fusion_apply_skins', $skin, 'sid');
+    module_invoke_all('fusion_apply_skin_update', $skin);
+  }
+  else {
+    // Insert a new record.
+    $status = drupal_write_record('fusion_apply_skins', $skin);
+    module_invoke_all('fusion_apply_skin_insert', $skin);
+  }
+
+  // Clear internal properties.
+  unset($skin->original);
+  // Clear the static loading cache.
+  // @todo If we have a more granular reset for fusion_apply_skin_load_multiple(), we
+  //   need to use it here.
+  drupal_static_reset('fusion_apply_skin_load_multiple');
+  
+
+  return $status;
+}
+
+/**
+ * Delete a skin object.
+ *
+ * @param $sid
+ *   The skin configuration ID.
+ */
+function fusion_apply_skin_delete($sid) {
+  fusion_apply_skin_delete_multiple(array($sid));
+}
+
+/**
+ * Delete multiple skin configuration objects.
+ *
+ * @param $sids
+ *   An array of skin configuration IDs.
+ */
+function fusion_apply_skin_delete_multiple($sids) {
+  $transaction = db_transaction();
+  if (!empty($sids)) {
+    $skins = fusion_apply_skin_load_multiple($sids);
+
+    try {
+      foreach ($skins as $sid => $skin) {
+        module_invoke_all('fusion_apply_skin_delete', $skin);
+      }
+
+      // Delete after calling hooks so that they can query node tables as needed.
+      db_delete('fusion_apply_skins')
+        ->condition('sid', $sids, 'IN')
+        ->execute();
+    }
+    catch (Exception $e) {
+      $transaction->rollback();
+      watchdog_exception('fusion_apply', $e);
+      throw $e;
+    }
+
+    // Clear the fusion_apply_skin_load_multiple cache.
+    drupal_static_reset('fusion_apply_skin_load_multiple');
+  }
+}
+
+/**
+ * Load a skin configuration object from the database.
+ *
+ * @param $sid
+ *   The skin configuration ID.
+ *
+ * @return
+ *   A fully-populated skin configuration object.
+ */
+function fusion_apply_skin_load($sid = NULL) {
+  $sids = (isset($sid) ? array($sid) : array());
+  $skin = fusion_apply_skin_load_multiple($sids);
+  return $skin ? reset($skin) : FALSE;
+}
+
+/**
+ * Load skin configuration objects from the database.
+ *
+ * This function should be used whenever you need to load more than one skin
+ * configuration from the database. Skin configurations are loaded into memory
+ * and will not require database access if loaded again during the same page
+ * request.
+ *
+ * @see fusion_apply_skin_get_sids()
+ *
+ * @param $sids
+ *   An array of skin configuration IDs.
+ *
+ * @return
+ *   An array of skin configuration objects indexed by sid.
+ */
+function fusion_apply_skin_load_multiple($sids = array()) {
+  // @todo Do we want to write a more granular cache reset?
+  $skins = &drupal_static(__FUNCTION__, array());
+
+  // Create a new variable which is either a prepared version of the $sids
+  // array for later comparison with cached skin configuration objects, or FALSE
+  // if no $sids were passed. The $sids array is reduced as items are loaded
+  // from cache, and we need to know if it's empty for this reason to avoid
+  // querying the database when all requested skin configuration objects are
+  // loaded from cache.
+  $passed_sids = !empty($sids) ? array_flip($sids) : FALSE;
+  if ($passed_sids) {
+    $sids = array_keys(array_diff_key($passed_sids, $skins));
+  }
+
+  // Load any remaining skin configurations from the database. This is the
+  // case if $sids is set to FALSE (so we load all skins), or if there are any
+  // sids left to load.
+  if ($sids === FALSE || $sids) {
+    // Build the query.
+    $queried_skins = db_select('fusion_apply_skins', 's')
+      ->fields('s')
+      ->condition('sid', $sids)
+      ->execute()
+      ->fetchAllAssoc('sid');
+
+    foreach ($queried_skins as $sid => $skin) {
+      // Unserialize options array.
+      $queried_skins[$sid]->options = unserialize($skin->options);
+
+      // Let modules modify the skin configurations.
+      module_invoke_all('fusion_apply_skin_load', $queried_skins[$sid]);
+    }
+    $skins += $queried_skins;
+  }
+
+  // Ensure that the returned array is ordered the same as the original
+  // $sids array if this was passed in and remove any invalid sids.
+  if ($passed_sids) {
+    // Remove any invalid sids from the array.
+    $passed_sids = array_intersect_key($passed_sids, $skins);
+    $return = array();
+    foreach ($passed_sids as $sid => $ignore) {
+      $return[$sid] = $skins[$sid];
+    }
+  }
+  else {
+    $return = $skins;
+  }
+
+  return $return;
+}
+
+/**
+ * Load an uncached version of a skin configuration object.
+ *
+ * @param $sid
+ *   The skin configuration ID.
+ *
+ * @return
+ *   A fully-populated skin configuration object.
+ */
+function fusion_apply_skin_load_unchanged($sid) {
+  // Load an uncached version of the skin configuration object.
+  $skin = db_query("SELECT * FROM {fusion_apply_skins} WHERE sid = :sid", array(
+    ':sid' => $sid,
+  ))
+  ->fetchObject();
+
+  // Unserialize options array.
+  $skin->options = unserialize($skin->options);
+
+  // Let modules modify the skin configuration.
+  module_invoke_all('fusion_apply_skin_load', $skin);
+
+  return $skin;
+}
+
+/**
+ * Get skin configuration IDs.
+ *
+ * @param $filter_by
+ *   An associative array whose keys are:
+ *   - theme: (optional) The theme.
+ *   - module: (optional) The module.
+ *   - element: (optional) The element ID.
+ *   - skin: (optional) The skin name.
+ *   - status: (optional) Boolean indicating whether or not this skin
+ *     configuration is enabled.
+ *
+ * @return
+ *   An array of skin configuration IDs.
+ */
+function fusion_apply_skin_get_sids($filter_by = array()) {
+  $query = db_select('fusion_apply_skins', 's')
+      ->fields('s', array('sid'));
+  if (isset($filter_by['theme'])) {
+    $query->condition('theme', $filter_by['theme']);
+  }
+  if (isset($filter_by['module'])) {
+    $query->condition('module', $filter_by['module']);
+  }
+  if (isset($filter_by['element'])) {
+    $query->condition('element', $filter_by['element']);
+  }
+  if (isset($filter_by['skin'])) {
+    $query->condition('skin', $filter_by['skin']);
+  }
+  if (isset($filter_by['status'])) {
+    $query->condition('status', $filter_by['status']);
+  }
+  return $query->execute()
+    ->fetchCol();
+}
+
+/**
+ * Helper function to remove empty skins from an array.
+ *
+ * @param $array
+ *   A single or multi-dimensional array to strip of empty values.
+ *
+ * @return
+ *   An array stripped of empty values.
+ */
+function _fusion_apply_array_strip_empty($array) {
+  $new_array = array();
+  foreach ($array as $key => $value) {
+    if (is_array($value)) {
+      $value = _fusion_apply_array_strip_empty($value);
+    }
+    if (!empty($value)) {
+      $new_array[$key] = $value;
+    }
+  }
+  return $new_array;
+}
+
+/**
+ * Helper function to retrieve the current theme.
+ *
+ * The global variable $theme_key doesn't work for our purposes when an admin
+ * theme is enabled.
+ *
+ * @param $exclude_admin_theme
+ *   Optional. Set to TRUE to exclude the admin theme from possible themes to
+ *   return.
+ *
+ * @return
+ *   The current theme name.
+ */
+function fusion_apply_current_theme($exclude_admin_theme = FALSE) {
+  $custom_theme = menu_get_custom_theme();
+  if (!empty($user->theme) && drupal_theme_access($user->theme)) {
+    $current_theme = $user->theme;
+  }
+  elseif (!empty($custom_theme) && !($exclude_admin_theme && $custom_theme == variable_get('admin_theme', '0'))) {
+    // Don't return the admin theme if we're editing Fusion Apply settings.
+    $current_theme = $custom_theme;
+  }
+  else {
+    $current_theme = variable_get('theme_default', 'bartik');
+  }
+  return $current_theme;
+}
+
+/**
+ * Prepare the default status for a skin.
+ *
+ * @param $skin_info
+ *   Information about a registered skin.
+ *
+ * @return
+ *   An array of default statuses for each enabled theme.
+ */
+function fusion_apply_skin_info_status_default($skin_info) {
+  $status = array();
+  // Retrieve the explicit default status of the registering theme for itself.
+  $base_theme_status = NULL;
+  if (isset($skin_info['status'][$skin_info['source']['name']])) {
+    $base_theme_status = $skin_info['status'][$skin_info['source']['name']];
+  }
+  // Retrieve the sub themes of the base theme that registered the skin.
+  $sub_themes = array();
+  if (isset($skin_info['source']['sub themes'])) {
+    $sub_themes = $skin_info['source']['sub themes'];
+  }
+  $themes = list_themes();
+  foreach ($themes as $name => $theme) {
+    if (!$theme->status) {
+      continue;
+    }
+    // If this theme is a sub theme of the theme that registered the skin, check
+    // whether we need to inherit the status of the base theme to the sub theme.
+    // This is the case when a skin of a base theme enables itself for the base
+    // theme (not knowing about potential sub themes).
+    if (isset($base_theme_status) && isset($sub_themes[$name])) {
+      $status[$name] = $base_theme_status;
+    }
+    // Apply global default.
+    $status += array($name => $skin_info['default status']);
+  }
+  // Lastly, apply all explicit defaults.
+  $status = array_merge($status, $skin_info['status']);
+
+  return $status;
+}
+
+/**
+ * Retrieve the overridden status of a skin.
+ *
+ * @param $skin_info
+ *   Information about a registered skin.
+ *
+ * @return
+ *   An array of statuses for each enabled theme. If no overrides are found,
+ *   the status defaults will be returned.
+ */
+function fusion_apply_skin_info_status_get($skin_info) {
+  return variable_get('fusion_apply_skin_' . $skin_info['name'] . '_status', $skin_info['status']);
+}
+
+/**
+ * Set the status of a skin. Overrides the skin plugin settings.
+ *
+ * @param $skin_info
+ *   Information about a registered skin.
+ * @param $status
+ *   An array of statuses for each theme.
+ */
+function fusion_apply_skin_info_status_set($skin_info, $status) {
+  variable_set('fusion_apply_skin_' . $skin_info['name'] . '_status', $status);
+}
+
+/**
+ * Helper function to prepend a path to an array of stylesheet or script filenames.
+ *
+ * If the url is absolute (e.g. the url start with 'http://' or 'https://')
+ * the path does not get prepended.
+ *
+ * @param $files
+ *   A an array of filenames that need the path prepended.
+ *   @todo Adjust docs to account for arrays instead of filenames.
+ * @param $path
+ *   The path to prepend.
+ */
+function _fusion_apply_add_path_to_files(&$files, $path) {
+  foreach ($files as $key => $file) {
+    if (is_array($file)) {
+      if (strpos($file[0], 'http://') === 0 || strpos($file[0], 'https://') === 0 ) {
+        continue;
+      }
+      $files[$key][0] = $path . '/' . $file[0];
+    }
+    else {
+      if (strpos($file, 'http://') === 0 || strpos($file, 'https://') === 0) {
+        continue;
+      }
+      $files[$key] = $path . '/' . $file;
+    }
+  }
+}
+
+/**
+ * Parse a skin_infos array as returned from a skins plugin.
+ *
+ * This function inserts any missing defaults and updates the stylesheet and
+ * script paths to be relative to Drupal's root.
+ *
+ * @param $skin_infos
+ *   An array of skins as returned from skin plugins.
+ * @param $source
+ *   An associative array containing information about the source of the skin.
+ *   See fusion_apply_implements() for details.
+ *
+ * @todo Merge into fusion_apply_get_skin_info() and remove this function.
+ */
+function fusion_apply_skin_info_process(&$skin_infos, $source) {
+  foreach ($skin_infos as $skin_name => $skin_info) {
+    // Populate default properties.
+    $skin_infos[$skin_name] += array(
+      'name' => '',
+      'title' => '',
+      'type' => 'checkboxes',
+      'description' => '',
+      'group' => 'general',
+      'theme hooks' => array('*'),
+      'attached' => array(),
+      'options' => array(),
+      'weight' => NULL,
+      'default status' => 0,
+      'status' => array(),
+    );
+
+    // Merge in name.
+    $skin_infos[$skin_name]['name'] = $skin_name;
+
+    // Merge in source information.
+    $skin_infos[$skin_name]['source'] = $source;
+
+    // Merge in default status for all themes.
+    $skin_infos[$skin_name]['status'] = fusion_apply_skin_info_status_default($skin_infos[$skin_name]);
+
+    // Add path to stylesheets.
+    if (isset($skin_infos[$skin_name]['attached']['css'])) {
+      _fusion_apply_add_path_to_files($skin_infos[$skin_name]['attached']['css'], $source['path']);
+    }
+    // Add path to scripts.
+    if (isset($skin_infos[$skin_name]['attached']['js'])) {
+      _fusion_apply_add_path_to_files($skin_infos[$skin_name]['attached']['js'], $source['path']);
+    }
+
+    foreach ($skin_infos[$skin_name]['options'] as $option_name => $option) {
+      // Add path to stylesheets.
+      if (isset($option['attached']['css'])) {
+        _fusion_apply_add_path_to_files($skin_infos[$skin_name]['options'][$option_name]['attached']['css'], $source['path']);
+      }
+      // Add path to scripts.
+      if (isset($option['attached']['js'])) {
+        _fusion_apply_add_path_to_files($skin_infos[$skin_name]['options'][$option_name]['attached']['js'], $source['path']);
+      }
+
+      // Validate class by running it through drupal_html_class().
+      if (!is_array($skin_infos[$skin_name]['options'][$option_name]['class'])) {
+        $skin_infos[$skin_name]['options'][$option_name]['class'] = array($skin_infos[$skin_name]['options'][$option_name]['class']);
+      }
+      foreach ($skin_infos[$skin_name]['options'][$option_name]['class'] as $key => $class) {
+        $skin_infos[$skin_name]['options'][$option_name]['class'][$key] = drupal_html_class($class);
+      }
+    }
+  }
+}
+
+/**
+ * Retrieves all skins registered by modules and themes.
+ *
+ * @return
+ *   An array of skins.
+ */
+function fusion_apply_get_skin_info() {
+  $skin_info = &drupal_static(__FUNCTION__);
+
+  if (!isset($skin_info)) {
+    if ($cached = cache_get('fusion_apply_skin_info')) {
+      $skin_info = $cached->data;
+      return $skin_info;
+    }
+    $skin_info = array();
+
+    foreach (fusion_apply_implements() as $name => $extension) {
+      $hooks = array(
+        "{$name}_fusion_apply_skin_info" => $extension,
+      );
+      // Load the extension's plugins, if any.
+      if ($files = fusion_apply_load_plugins($extension)) {
+        // The base path for plugins is the directory defined by the extension.
+        $dir = $extension['path'] . '/' . $extension['directory'];
+        foreach ($files as $plugin => $file) {
+          $hooks["{$name}_fusion_apply_skin_{$plugin}_info"] = array(
+            // The source path for a plugin is the plugin directory.
+            'path' => $dir . '/' . basename(dirname($file->uri)),
+          ) + $extension;
+        }
+      }
+      foreach ($hooks as $function => $source) {
+        if (function_exists($function)) {
+          $extension_info = $function();
+          if (isset($extension_info) && is_array($extension_info)) {
+            // Prepare the skin information.
+            fusion_apply_skin_info_process($extension_info, $source);
+
+            $skin_info += $extension_info;
+          }
+        }
+      }
+    }
+
+    // Allow modules to alter registered skin information.
+    drupal_alter('fusion_apply_skin_info', $skin_info);
+
+    cache_set('fusion_apply_skin_info', $skin_info);
+  }
+
+  return $skin_info;
+}
+
+/**
+ * Retrieves all skin groups registered by modules and themes.
+ *
+ * @return
+ *   An array of groups.
+ */
+function fusion_apply_get_group_info() {
+  $group_info = &drupal_static(__FUNCTION__);
+
+  if (!isset($group_info)) {
+    if ($cached = cache_get('fusion_apply_group_info')) {
+      $group_info = $cached->data;
+      return $group_info;
+    }
+    $group_info = array();
+
+    foreach (fusion_apply_implements() as $name => $extension) {
+      $hooks = array(
+        "{$name}_fusion_apply_group_info" => $extension,
+      );
+      // Load the extension's plugins, if any.
+      if ($files = fusion_apply_load_plugins($extension)) {
+        // The base path for plugins is the directory defined by the extension.
+        $dir = $extension['path'] . '/' . $extension['directory'];
+        foreach ($files as $plugin => $file) {
+          $hooks["{$name}_fusion_apply_group_{$plugin}_info"] = array(
+            // The source path for a plugin is the plugin directory.
+            'path' => $dir . '/' . basename(dirname($file->uri)),
+          ) + $extension;
+        }
+      }
+      foreach ($hooks as $function => $source) {
+        if (function_exists($function)) {
+          $extension_info = $function();
+          if (isset($extension_info) && is_array($extension_info)) {
+            // Prepare the skin group information.
+            foreach ($extension_info as &$group) {
+              $group += array(
+                'title' => '',
+                'description' => '',
+                'weight' => 0,
+              );
+            }
+            $group_info += $extension_info;
+          }
+        }
+      }
+    }
+
+    // Allow modules to alter groups through hook_fusion_apply_group_info_alter().
+    drupal_alter('fusion_apply_group_info', $group_info);
+
+    cache_set('fusion_apply_group_info', $group_info);
+  }
+
+  return $group_info;
+}
+
+/**
+ * Fetch Fusion Apply configuration data from functionality plugins.
+ *
+ * @return
+ *   An array of all configuration data.
+ */
+function fusion_apply_get_config_info() {
+  $config_info = &drupal_static(__FUNCTION__);
+
+  if (!isset($config_info)) {
+    if ($cached = cache_get('fusion_apply_config_info')) {
+      $config_info = $cached->data;
+      return $config_info;
+    }
+    $config_info = array();
+
+    foreach (fusion_apply_implements() as $name => $extension) {
+      $function = "{$name}_fusion_apply_config_info";
+      if (function_exists($function)) {
+        $extension_info = $function();
+        if (isset($extension_info) && is_array($extension_info)) {
+          $config_info = array_merge_recursive($config_info, $extension_info);
+        }
+      }
+    }
+
+    // Allow modules to alter config info via hook_fusion_apply_config_info_alter().
+    drupal_alter('fusion_apply_config_info', $config_info);
+
+    cache_set('fusion_apply_config_info', $config_info);
+  }
+  return $config_info;
+}
+
+/**
+ * Prepare default configuration data for modules.
+ *
+ * @todo Search and destroy.
+ */
+function fusion_apply_config_info_default() {
+  return array(
+    'access_handler' => 'fusion_apply_access_handler',
+    'index_handler' => 'fusion_apply_index_handler',
+    'data_handler' => 'fusion_apply_data_handler',
+    'submit_handler' => 'fusion_apply_submit_handler',
+    'submit_handler_attach_to' => array('#submit'),
+    'fusion_apply_title' => t('Apply skins - '),
+    'fusion_apply_weight' => 1,
+    'title' => '',
+    'description' => t('Grayed out skins are not available for this element.  You are managing skins for the hook: '),
+    'collapsed' => TRUE,
+    'weight' => 0,
+  );
+}
+
+/**
+ * Execute a module's data handler.
+ *
+ * @param $type
+ *   The type of handler to execute. Possible values:
+ *   - 'access_handler':
+ *   - 'contextual_links':
+ *   - 'data_handler':
+ *   - 'form_index_handler':
+ *   - 'preprocess_index_handler':
+ *   - 'preprocess_hook_callback':
+ *   - 'submit_handler':
+ * @param $op
+ *   For 'access_handler' the possible values are 'edit skin settings'
+ *     and 'edit advanced skin settings'.
+ *   For 'contextual_links' an empty string is passed.
+ *   For 'data_handler' the possible values are 'form' and 'submit'.
+ *   For 'form_index_handler' the possible values are 'form' and 'submit'.
+ *   For 'preprocess_index_handler' the possible values are 'preprocess'.
+ *   For 'preprocess_hook_callback' an empty string is passed.
+ *   For 'submit_handler' an empty string is passed.
+ * @param $handler
+ *   The function name for this handler as gotten from fusion_apply_fetch_config().
+ * @param $a3
+ *   For 'access_handler', passes in the $form parameter as provided to a form
+ *     function.
+ *   For 'contextual_links', passes in the $variables parameter from
+ *     fusion_apply_preprocess().
+ *   For 'data_handler', passes in the $form parameter from hook_form_submit().
+ *   For 'form_index_handler':
+ *   - For $op 'form', passes in the $form parameter from hook_form_alter().
+ *   - For $op 'submit', passes in the $form parameter from hook_form_submit().
+ *   For 'preprocess_index_handler', passes in the $variables parameter from
+ *     module_preprocess().
+ *   For 'preprocess_hook_callback', passes in the $form parameter from
+ *     hook_form_alter().
+ *   For 'submit_handler', passes in the $form parameter from hook_form_alter().
+ *
+ * @param $a4
+ *   For 'access_handler', passes in the $form_state array as provided to a
+ *     form function.
+ *   For 'data_handler', passes in the $form_state parameter form
+ *     hook_form_submit().
+ *   For 'form_index_handler':
+ *   - For $op 'form', passes in the $form_state parameter from
+ *     hook_form_alter().
+ *   - For $op 'submit', passes in the $form_state parameter from
+ *     hook_form_submit().
+ *   For 'preprocess_hook_callback', passes in the $form_state parameter from
+ *     hook_form_alter().
+ *   For 'submit_handler', passes in the $form_state parameter from
+ *     hook_form_alter().
+ * @param $a5
+ *   For 'data_handler', passes in the module that is currently being processed.
+ *   For 'submit_handler', passes in the module that is currently being
+ *     processed.
+ * @param $a6
+ *   For 'data_handler', passes in the settings from hook_fusion_apply_config() for
+ *     the form that's currently being processed.
+ *   For 'submit_handler', passes in the settings from hook_fusion_apply_config() for
+ *     the form that's currently being processed.
+ * @param $a7
+ */
+function fusion_apply_handler($type, $op, $handler, &$a3, $a4 = NULL, $a5 = NULL, $a6 = NULL, $a7 = NULL) {
+  if (is_callable($handler)) {
+    switch ($type) {
+      case 'contextual_links':
+      case 'preprocess_index_handler':
+        return $handler($a3);
+
+      case 'preprocess_hook_callback':
+        return $handler($a3, $a4);
+
+      case 'data_handler':
+      case 'submit_handler':
+        return $handler($a3, $a4, $a5, $a6, $a7);
+
+      default:
+        return $handler($op, $a3, $a4);
+    }
+  }
+}
+
+/**
+ * Implements hook_modules_enabled().
+ */
+function fusion_apply_modules_enabled() {
+  fusion_apply_cache_reset();
+}
+
+/**
+ * Implements hook_modules_disabled().
+ */
+function fusion_apply_modules_disabled() {
+  fusion_apply_cache_reset();
+}
+
+/**
+ * Implements hook_themes_enabled().
+ */
+function fusion_apply_themes_enabled() {
+  fusion_apply_cache_reset();
+}
+
+/**
+ * Implements hook_themes_disabled().
+ */
+function fusion_apply_themes_disabled() {
+  fusion_apply_cache_reset();
+}

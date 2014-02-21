@@ -1,0 +1,37 @@
+<?php
+
+/**
+ * Implements hook_fusion_apply_api(). (bogus)
+ */
+function fusion_apply_test_incompatible_fusion_apply_api() {
+}
+
+/**
+ * Implements hook_fusion_apply_api_VERSION(). (incompatible)
+ */
+function fusion_apply_test_incompatible_fusion_apply_api_1() {
+}
+
+/**
+ * Implements hook_fusion_apply_skin_info().
+ *
+ * This hook implementation purposively does not live in $module.fusion.inc, so
+ * tests can verify that this implementation is not invoked, even though it is
+ * loaded.
+ */
+function fusion_apply_test_incompatible_fusion_apply_skin_info() {
+  $skins['fusion_apply_test_incompatible'] = array(
+    'title' => 'Incompatible',
+  );
+  return $skins;
+}
+
+/**
+ * Implements hook_fusion_apply_config_info().
+ */
+function fusion_apply_test_incompatible_fusion_apply_config_info() {
+  $config['fusion_apply_test_incompatible']['preprocess']['html'] = array(
+    'index_handler' => 'rules_fusion_apply_preprocess_index_handler',
+  );
+  return $config;
+}

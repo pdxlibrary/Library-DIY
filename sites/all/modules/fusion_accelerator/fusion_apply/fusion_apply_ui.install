@@ -1,0 +1,25 @@
+<?php
+
+/**
+ * @file
+ * Contains install, update, and uninstall functions for Fusion Apply UI.
+ */
+
+/**
+ * Implements hook_install().
+ */
+function fusion_apply_ui_install() {
+  // Fusion Apply should go before contextual module.
+  db_update('system')
+    ->fields(array('weight' => -1))
+    ->condition('name', 'fusion_apply_ui')
+    ->execute();
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function fusion_apply_ui_uninstall() {
+  variable_del('fusion_apply_overlay_width');
+  variable_del('fusion_apply_overlay_height');
+}

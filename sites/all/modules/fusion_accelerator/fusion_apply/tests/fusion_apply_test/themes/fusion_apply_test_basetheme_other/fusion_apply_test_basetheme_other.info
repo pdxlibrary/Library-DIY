@@ -1,0 +1,10 @@
+name = Fusion Apply test base theme (other)
+description = Test theme which acts as a normal base theme for other test subthemes. It does not include any skins.
+core = 7.x
+hidden = TRUE
+; Information added by drupal.org packaging script on 2012-03-23
+version = "7.x-2.0-beta1"
+core = "7.x"
+project = "fusion_accelerator"
+datestamp = "1332518152"
+

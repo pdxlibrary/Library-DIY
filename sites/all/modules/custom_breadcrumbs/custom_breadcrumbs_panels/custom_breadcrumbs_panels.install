@@ -1,0 +1,83 @@
+<?php
+/**
+ * @file
+ * Install file for the custom_breadcrumbs_panels module.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function custom_breadcrumbs_panels_schema() {
+  $schema['custom_breadcrumbs_panels'] = array(
+    'description' => 'Stores custom breadcrumb trail overrides for panels pages.',
+    'fields' => array(
+      'bid' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'Unique identifier for the {custom_breadcrumbs_panels}.',
+      ),
+      'name' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => FALSE,
+        'description' => 'An optional name for the custom breadcrumb.',
+      ),
+      'titles' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'A return-delimited list of titles for the breadcrumb links.',
+      ),
+      'paths' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+        'description' => 'A return-delimited list of url paths for the breadcrumb links.',
+      ),
+      'visibility_php' => array(
+        'type' => 'text',
+        'not null' => TRUE,
+        'size' => 'medium',
+        'description' => 'An optional PHP snippet to control the {custom_breadcrumbs_panels} visibility.',
+      ),
+      'panel_id' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'description' => 'The Id of the panel for this custom breadcrumb.',
+      ),
+      'language' => array(
+        'type' => 'varchar',
+        'length' => 12,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The language this breadcrumb is for; if blank, the breadcrumb will be used for unknown languages.',
+      ),
+    ),
+    'indexes' => array(
+      'language' => array('language'),
+      'panelid_language' => array('panel_id', 'language'),
+    ),
+    'primary key' => array('bid'),
+  );
+  return $schema;
+}
+
+/**
+ * Adds name field for improved organization of breadcrumbs
+ * Remove set_active_menu field because it is no longer used.
+ */
+function custom_breadcrumbs_panels_update_6200() {
+  db_add_field('name', array('type' => 'varchar', 'length' => 128, 'NOT NULL' => FALSE, 'description' => 'An optional name for the custom breadcrumb.'));
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function custom_breadcrumbs_panels_uninstall() {
+
+  // Remove persistent variables.
+  variable_del('custom_breadcrumbs_taxonomy_panels');
+}

@@ -1,0 +1,69 @@
+/* RWDG theme styles
+/-------------------------------------------------------------- */
+
+/* Class is applied to all background-shaded skins, for universal styles */
+.rwdg-bg .inner {
+  border: 1px solid rgba(0,0,0,0.6);
+  -webkit-border-radius: 9px;
+  -moz-border-radius: 9px;
+  border-radius: 9px;
+  color: rgba(0,0,0,0.6);
+  padding: 1.5em;
+}
+
+.rwdg-bg a:link,
+.rwdg-bg a:visited {
+  color: rgba(0,0,0,0.8);
+  text-decoration: underline;
+}
+
+.rwdg-bg a:hover,
+.rwdg-bg a:active,
+.rwdg-bg a:focus {
+  text-decoration: none;
+}
+
+.rwdg-bg h2 {
+  font-family: Cambria, 'Hoefler Text', Utopia, 'Liberation Serif', 'Nimbus Roman No9 L', Times, 'Times New Roman';
+  text-shadow: 1px 1px 1px rgba(255,255,255,0.7);
+  filter: dropshadow(color=rgba(255,255,255,0.7), offx=1, offy=1);
+}
+
+.rwdg-pink .inner {
+  background: rgb(223,130,128);
+  background: -moz-linear-gradient(top, rgba(223,130,128,1) 0%, rgba(217,105,101,1) 100%);
+  background: -webkit-gradient(linear, left top, left bottom, color-stop(0%,rgba(223,130,128,1)), color-stop(100%,rgba(217,105,101,1)));
+  background: -webkit-linear-gradient(top, rgba(223,130,128,1) 0%,rgba(217,105,101,1) 100%);
+  background: -o-linear-gradient(top, rgba(223,130,128,1) 0%,rgba(217,105,101,1) 100%);
+  background: -ms-linear-gradient(top, rgba(223,130,128,1) 0%,rgba(217,105,101,1) 100%);
+  background: linear-gradient(top, rgba(223,130,128,1) 0%,rgba(217,105,101,1) 100%);
+  filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#df8280', endColorstr='#d96965',GradientType=0 );
+}
+
+.rwdg-blue .inner {
+  background: rgb(67,170,197);
+  background: -moz-linear-gradient(top, rgba(67,170,197,1) 0%, rgba(55,143,171,1) 100%);
+  background: -webkit-gradient(linear, left top, left bottom, color-stop(0%,rgba(67,170,197,1)), color-stop(100%,rgba(55,143,171,1)));
+  background: -webkit-linear-gradient(top, rgba(67,170,197,1) 0%,rgba(55,143,171,1) 100%);
+  background: -o-linear-gradient(top, rgba(67,170,197,1) 0%,rgba(55,143,171,1) 100%);
+  background: -ms-linear-gradient(top, rgba(67,170,197,1) 0%,rgba(55,143,171,1) 100%);
+  background: linear-gradient(top, rgba(67,170,197,1) 0%,rgba(55,143,171,1) 100%);
+  filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#43aac5', endColorstr='#378fab',GradientType=0 );
+}
+
+.rwdg-pink-title h2.block-title {
+  color: #D96965;
+}
+
+.rwdg-blue-title h2.block-title {
+  color: #378FAB;
+}
+
+.rwdg-title-list .content ul li {
+  font-size: 1.1em;
+  padding: 3px;
+}
+
+.rwdg-title-list .content ul li a {
+  font-weight: bold;
+}

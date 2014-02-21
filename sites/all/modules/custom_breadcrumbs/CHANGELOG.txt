@@ -1,0 +1,19 @@
+Issue #857956 by MGN: Initial port of custom breadcrumbs 6.x-2.x branch to 7.x-2.x.
+Includes custom_breadcrumbs, custom_breadcrumbs_paths and custom_breadcrumbs_taxonomy.
+Other modules to follow.
+Issue #1213018 by MGN: Fixes incorrect loading of include file in custom_breadcrumbs_taxonomy.
+Issue * by MGN: Replaced call to parse_url with drupal_parse_url.
+Issue #1091546 by MGN: Custom breadcrumb with page node template not working
+Issue #1060050 by MGN: How to enable breadcrumbs for paths and views?
+Issue #1187612 by MGN: Groups, and Panels, and Breadcrumbs! Oh, my!
+Issue #1219214 by MGN: Fixed incorrect call to taxonomy_node_get_terms().
+Issue #1223100 by MGN: Fixed undefined variable notices.
+Issue #1213760 by morningtime and MGN: Fixed undefined property notice when creating nodes.
+Issue #1222806 by MGN: Fixes capitalization errors.
+Issue #1223100 by justanothermark: Fixes PHP notice due to empty $_SESSION variable.
+Issue #1229076 by MGN: Fixes undefined function error caused by taxonomy_terms_parse_string.
+Issue #1240974 by MGN: Fixes undefined index: q in custom_breadcrumbs_exclude_path notice.
+Issue #1240974 by MGN: Removes checkbox for Adjust module weights to improve UI.
+Issue #1219214 by MGN: Fixed (another) incorrect call to taxonomy_node_get_terms().
+Issue #1256742 by MGN: Fixed empty id in breadcrumb links.
+Issue #1269716 by MGN: Fixes undefined property notice when creating new content.

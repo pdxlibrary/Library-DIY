@@ -1,0 +1,837 @@
+<?php
+
+/**
+ * @file
+ * Handles Fusion Apply UI functionality allowing users to apply skins to their site.
+ */
+
+/**
+ * Implements hook_permission().
+ */
+function fusion_apply_ui_permission() {
+  return array(
+    'administer fusion' => array(
+      'title' => t('Administer Fusion'),
+    ),
+    'edit skin settings' => array(
+      'title' => t('Edit skin settings.'),
+    ),
+    'edit advanced skin settings' => array(
+      'title' => t('Edit advanced skin settings'),
+      'description' => t('Edit advanced skin settings, such as custom CSS classes.'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_menu().
+ */
+function fusion_apply_ui_menu() {
+  $items['admin/appearance/fusion'] = array(
+    'title' => 'Fusion Accelerator',
+    'description' => 'Manage site skins and customize your Fusion grid.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('fusion_apply_ui_list'),
+    'access arguments' => array('administer fusion'),
+    'file' => 'fusion_apply_ui.admin.inc',
+    'type' => MENU_LOCAL_TASK,
+  );
+  $items['admin/appearance/fusion/list'] = array(
+    'title' => 'Applied skins',
+    'description' => t('Manage Fusion skin configurations.'),
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => -10,
+  );
+
+  // Themes.
+  $items['admin/appearance/fusion/skins'] = array(
+    'title' => 'Skin library',
+    'description' => 'Manage which skins are available when applying a skin configuration.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('fusion_apply_ui_admin_skin_infos'),
+    'access arguments' => array('administer fusion'),
+    'file' => 'fusion_apply_ui.admin.inc',
+    'type' => MENU_LOCAL_TASK,
+  );
+  $items['admin/appearance/fusion/skins/select'] = array(
+    'title' => 'List',
+    'description' => 'Manage your skins.',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => 1,
+  );
+  $items['admin/appearance/fusion/skins/settings/%fusion_apply_ui_skin_info'] = array(
+    'title' => 'Skin settings',
+    'title callback' => 'fusion_apply_ui_skin_info_title',
+    'title arguments' => array(5),
+    'description' => 'Manage which options are available for each skin when applying a skin configuration.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('fusion_apply_ui_admin_skin_info_settings', 5),
+    'access arguments' => array('administer fusion'),
+    'file' => 'fusion_apply_ui.admin.inc',
+    'type' => MENU_LOCAL_TASK,
+  );
+
+  // Fusion Apply skin rules.
+  if (module_exists('fusion_apply_rules')) {
+    $items['admin/appearance/fusion/rules'] = array(
+      'title' => 'Page and region rules',
+      'page callback' => 'fusion_apply_rules',
+      'type' => MENU_LOCAL_TASK,
+      'weight' => 1,
+      'description' => t('Configure region and page level skin rules.'),
+      'access arguments' => array('administer fusion'),
+      'file' => 'fusion_apply_ui.rules.inc',
+    );
+    $items['admin/appearance/fusion/rules/add'] = array(
+      'title' => 'Create a new rule',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('fusion_apply_rule_add'),
+      'type' => MENU_LOCAL_ACTION,
+      'access arguments' => array('administer fusion'),
+      'file' => 'fusion_apply_ui.rules.inc',
+    );
+    $items['admin/appearance/fusion/rules/edit'] = array(
+      'title' => 'Edit rule',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('fusion_apply_rule_edit'),
+      'type' => MENU_CALLBACK,
+      'access arguments' => array('administer fusion'),
+      'file' => 'fusion_apply_ui.rules.inc',
+    );
+    $items['admin/appearance/fusion/rules/delete'] = array(
+      'title' => 'Delete rule',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('fusion_apply_rule_delete_confirm'),
+      'type' => MENU_CALLBACK,
+      'access arguments' => array('administer fusion'),
+      'file' => 'fusion_apply_ui.rules.inc',
+    );  
+  } 
+
+  // Import & Export.
+  $items['admin/appearance/fusion/list/import'] = array(
+    'title' => 'Import',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('fusion_apply_ui_import_form'),
+    'type' => MENU_LOCAL_ACTION,
+    'access arguments' => array('administer fusion'),
+    'weight' => -4,
+    'description' => t('Import skin configurations.'),
+    'file' => 'fusion_apply_ui.admin.inc',
+  );
+  $items['admin/appearance/fusion/list/export'] = array(
+    'title' => 'Export',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('fusion_apply_ui_export_form'),
+    'type' => MENU_LOCAL_ACTION,
+    'access arguments' => array('administer fusion'),
+    'weight' => -5,
+    'description' => t('Export skin configurations.'),
+    'file' => 'fusion_apply_ui.admin.inc',
+  );
+
+  // Configure skin settings for an element.
+  $items['admin/appearance/fusion/edit/%fusion_apply_js/%/%'] = array(
+    'title' => 'Edit skin',
+    'title callback' => 'fusion_apply_ui_edit_title',
+    'title arguments' => array(5, 6),
+    'page callback' => 'fusion_apply_ui_edit',
+    'page arguments' => array(4, 5, 6), // js|nojs, module, element
+    'type' => MENU_CALLBACK,
+    'context' => MENU_CONTEXT_PAGE | MENU_CONTEXT_INLINE,
+    'access arguments' => array('edit skin settings'),
+  );
+  $items['admin/appearance/fusion/edit/%fusion_apply_js/%/%/configure'] = array(
+    'title' => 'Edit skin',
+    'title callback' => 'fusion_apply_ui_edit_contextual_title',
+    'title arguments' => array(5, 6),
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'context' => MENU_CONTEXT_INLINE,
+  );
+
+  // Enable a skin configuration.
+  $items['admin/appearance/fusion/enable/%fusion_apply_skin'] = array(
+    'title' => 'Enable skin',
+    'page callback' => 'fusion_apply_ui_skin_status_set',
+    'page arguments' => array(4, TRUE),
+    'type' => MENU_CALLBACK,
+    'access arguments' => array('administer fusion'),
+    'file' => 'fusion_apply_ui.admin.inc',
+  );
+
+  // Disable a skin configuration.
+  $items['admin/appearance/fusion/disable/%fusion_apply_skin'] = array(
+    'title' => 'Disable skin',
+    'page callback' => 'fusion_apply_ui_skin_status_set',
+    'page arguments' => array(4, FALSE),
+    'type' => MENU_CALLBACK,
+    'access arguments' => array('administer fusion'),
+    'file' => 'fusion_apply_ui.admin.inc',
+  );
+
+  // Delete a skin configuration.
+  $items['admin/appearance/fusion/delete/%fusion_apply_skin'] = array(
+    'title' => 'Delete skin',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('fusion_apply_ui_delete_confirm', 4),
+    'type' => MENU_CALLBACK,
+    'access arguments' => array('administer fusion'),
+    'file' => 'fusion_apply_ui.admin.inc',
+  );
+
+  // Fetch skin file info through AJAX.
+  $items['admin/appearance/fusion/info/%'] = array(
+    'title' => 'Fusion file information',
+    'page callback' => 'fusion_apply_ui_skin_get_files',
+    'page arguments' => array(4),
+    'type' => MENU_CALLBACK,
+    'access arguments' => array('administer fusion'),
+  );
+
+  return $items;
+}
+
+/**
+ * Menu argument loader; Retrieves skin information for a single skin.
+ */
+function fusion_apply_ui_skin_info_load($name) {
+  $skin_info = fusion_apply_get_skin_info();
+  if (isset($skin_info[$name])) {
+    return $skin_info[$name];
+  }
+  return FALSE;
+}
+
+/**
+ * Menu title callback; Returns the title of a skin.
+ */
+function fusion_apply_ui_skin_info_title($skin_info) {
+  return check_plain($skin_info['title']);
+}
+
+/**
+ * Helper function to determine if ajax is used to call a function.
+ */
+function fusion_apply_js_load($js = 'nojs') {
+  if ($js == 'ajax') {
+    return TRUE;
+  }
+  return 0;
+}
+
+/**
+ * Implements hook_theme().
+ */
+function fusion_apply_ui_theme() {
+  return array(
+    'fusion_apply_ui_block_admin_display_form' => array(
+      'template' => 'fusion-block-admin-display-form'
+    ),
+    'fusion_apply_ui_admin_skin_infos_fieldset' => array(
+      'render element' => 'form',
+      'file' => 'fusion_apply_ui.admin.inc',
+    ),
+    'fusion_apply_ui_admin_skin_infos_summary' => array(
+      'variables' => array('name' => NULL, 'description' => NULL),
+      'file' => 'fusion_apply_ui.admin.inc',
+    ),
+    'fusion_apply_ui_admin_dl' => array(
+      'variables' => array('definitions' => NULL, 'attributes' => array()),
+      'file' => 'fusion_apply_ui.admin.inc',
+    ),
+  );
+}
+
+/**
+ * Implements hook_help().
+ */
+function fusion_apply_ui_help($path, $arg) {
+  
+  // @todo - rewrite advanced help
+  /*
+  if (module_exists('advanced_help')) {
+    $advanced_help = '<p>' . t('Visit the <a href="@fusion_apply-help">help page</a> for full documentation.', array('@fusion_apply-help' => url('admin/advanced_help/fusion'))). '</p>';
+  }
+  else {
+    $advanced_help = '<p>' . t('Please download and enable the <a href="http://drupal.org/project/advanced_help">Advanced Help</a> module for full Fusion documentation.') . '</p>';
+  }
+  */
+  switch ($path) {
+    case 'admin/appearance/fusion':
+      return  '<p>' . t('Below is a list of all skin configurations in use on this site.') . '</p>';// . $advanced_help;
+    case 'admin/appearance/fusion/rule':
+      return  '<p>' . t('Below is a list of skin rules. Rules can be created for <em>region</em> and <em>page</em> elements.  Start by creating a new rule.') . '</p>';
+    case 'admin/appearance/fusion/rule/add':
+      return  '<p>' . t('Choose the type of rule you wish to create. Page rules apply classes to the &lt;body&gt; tag. Region rules apply to the region wrapper &lt;div&gt; tag.') . '</p>';
+    case 'admin/appearance/fusion/list/import':
+      return  '<p>' . t('To import skin configurations, paste exported code and click the "Import" button.') . '</p>';
+    case 'admin/appearance/fusion/list/export':
+      return  '<p>' . t('To export skin configurations, ensure the correct theme is selected and click the "Export" button.') . '</p>';
+      break;
+  }
+}
+
+/**
+ * Menu title callback; sets the title for a skins configuration form page.
+ *
+ * @param $module
+ *   The module that we're editing settings of.
+ * @param $element
+ *   The element we're editing settings of.
+ */
+function fusion_apply_ui_edit_title($module, $element) {
+  return t('Skin settings for !module type !element', array('!module' => $module, '!element' => $element));
+}
+
+/**
+ * Menu title callback; sets the title for a skins configuration form page.
+ *
+ * @param $module
+ *   The module that we're editing settings for.
+ * @param $element
+ *   The element we're editing settings for.
+ */
+function fusion_apply_ui_edit_contextual_title($module, $element) {
+  $contextual_links = fusion_apply_ui_get_contextual_links();
+  foreach ($contextual_links as $hook => $links) {
+    $counter = 1;
+    foreach ($links as $link) {
+      if ($link[1][0] == $module && $link[1][1] == $element) {
+        if (count($links) > 1) {
+          return t('Edit skin !number', array('!number' => $counter));
+        }
+        break 2;
+      }
+      $counter++;
+    }
+  }
+  return t('Edit skin');
+}
+
+/**
+ * Menu callback; prepares some variables and displays a Fusion Apply edit form.
+ *
+ * @param $js
+ *   TRUE if called from javascript, FALSE otherwise.
+ * @param $module
+ *   The module that we're editing settings of.
+ * @param $element
+ *   The element of the object we're editing settings of.
+ * @param $elements
+ *   An array of $element when more than one is returned from the preprocess
+ *   index handler. Used by the javascript UI to update all elements involved.
+ */
+function fusion_apply_ui_edit($js = FALSE, $module, $element, $elements = NULL) {
+  drupal_add_css(drupal_get_path('module', 'fusion_apply_ui') . '/fusion_apply_ui.css');
+  if ($js) {
+    // Do additional ajax related stuff.
+  }
+  $arguments = array(
+    'fusion_apply' => array(
+      'module' => $module,
+      'element' => $element,
+      'elements' => $elements,
+    ),
+  );
+  return drupal_get_form('fusion_apply_ui_form', $arguments);
+}
+
+/**
+ * Form builder for the skins configuration form.
+ *
+ * @param $arguments
+ *   An array of arguments as passed in by fusion_apply_ui_edit().
+ *
+ * @ingroup forms
+ */
+function fusion_apply_ui_form($form, &$form_state, $arguments) {
+
+  $form = array(
+    '#attributes' => array('class' => 'fusion_apply-form'),
+  );
+  
+  $form['fusion_apply']['module'] = array(
+    '#type' => 'hidden',
+    '#value' => !empty($form_state['fusion_apply']['module']) ? $form_state['fusion_apply']['module'] : $arguments['fusion_apply']['module'],
+  );
+  $form['fusion_apply']['element'] = array(
+    '#type' => 'hidden',
+    '#value' => !empty($form_state['fusion_apply']['element']) ? $form_state['fusion_apply']['element'] : $arguments['fusion_apply']['element'],
+  );
+  if (!empty($form_state['fusion_apply']['elements']) || !empty($arguments['fusion_apply']['elements'])) {
+    $form['fusion_apply']['elements'] = array(
+      '#type' => 'hidden',
+      '#value' => !empty($form_state['fusion_apply']['elements']) ? $form_state['fusion_apply']['elements'] : $arguments['fusion_apply']['elements'],
+    );
+  }
+  
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Save'),
+    '#weight' => 50,
+  );
+  
+  return $form;
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function fusion_apply_ui_form_alter(&$form, $form_state, $form_id) {
+
+  // Fix for update script.
+  if (($form_id) == 'update_script_selection_form') {
+    return;
+  }
+
+  $config = fusion_apply_get_config_info();
+  $groups = fusion_apply_get_group_info();
+  $skin_infos = fusion_apply_get_skin_info();
+
+  // Apply overridden status to skins.
+  foreach ($skin_infos as $skin_name => $skin_info) {
+    $skin_infos[$skin_name]['status'] = fusion_apply_skin_info_status_get($skin_infos[$skin_name]);
+  }
+
+  foreach ($config as $module => $module_settings) {
+    if (isset($module_settings['form'][$form_id])) {
+      if (!empty($form['fusion_apply']) && $form['fusion_apply']['module']['#value'] !== $module) {
+        continue;
+      }
+
+      $form_settings = array_merge(fusion_apply_config_info_default(), $module_settings['form'][$form_id]);
+
+      // Check for access.
+      if (!fusion_apply_handler('access_handler', 'edit skin settings', $form_settings['access_handler'], $form, $form_state)) {
+        // Deny access.
+        break;
+      }
+
+      // Ensure we have the required preprocess_hook or preprocess_hook_callback.
+      if (empty($form_settings['preprocess_hook']) && empty($form_settings['preprocess_hook_callback'])) {
+        trigger_error(sprintf("No preprocess_hook or preprocess_hook_callback was found for form_id '%s' in module '%s'.", $form_id, $module), E_USER_ERROR);
+      }
+
+      $themes = list_themes();
+      ksort($themes);
+
+      foreach ($themes as $theme) {
+        if (!$theme->status) {
+          continue;
+        }
+
+        if (!isset($form['fusion_apply_settings'])) {
+          $form['fusion_apply_settings'] = array(
+            '#tree' => TRUE,
+            '#weight' => $form_settings['fusion_apply_weight'],
+          );
+        }
+
+        $preprocess_hooks = isset($form_settings['preprocess_hook']) ? $form_settings['preprocess_hook'] : fusion_apply_handler('preprocess_hook_callback', '', $form_settings['preprocess_hook_callback'], $form, $form_state);
+        if (!is_array($preprocess_hooks)) {
+          $preprocess_hooks = array($preprocess_hooks);
+        }
+
+        // If this hook is a region, and the region does not exist for this
+        // theme, don't bother outputting any of the settings.
+        if (strpos($preprocess_hooks[0], 'region') === 0) {
+          // Strip the region__ part off the region name.
+          $region = substr($preprocess_hooks[0], 8);
+
+          $regions = system_region_list($theme->name, REGIONS_VISIBLE);
+          if (!isset($regions[$region])) {
+            continue;
+          }
+        }
+
+        if (!$form_state['submitted']) {
+          if ($skins = fusion_apply_handler('data_handler', 'form', $form_settings['data_handler'], $form, $form_state, $theme->name, $module, $form_settings)) {
+            $defaults = array();
+            foreach ($skins as $skin) {
+              $defaults[$skin->skin] = $skin->options;
+            }
+          }
+          else {
+            $defaults = array();
+          }
+        }
+        else {
+          // Handle preview before submit.
+          // @todo Is this still needed? If so, it needs to be fixed.
+          $defaults = $form_state['values'];
+        }
+
+        if (!isset($form['fusion_apply_settings'][$module . '_group'])) {
+          $form['fusion_apply_settings'][$module . '_group'] = array(
+            '#type' => 'fieldset',
+            '#title' => t('@fusion_apply_title @title', array('@fusion_apply_title' => $form_settings['fusion_apply_title'], '@title' => $form_settings['title'])),
+            '#description' => t($form_settings['description']) . ' <strong>' . implode(', ', $preprocess_hooks) . '</strong>.',
+            '#weight' => $form_settings['weight'],
+            '#collapsible' => TRUE,
+            '#collapsed' => $form_settings['collapsed'],
+          );
+        }
+
+        // Get current theme, but make sure it's not the admin theme when we're editing with AJAX.
+        $current_theme = fusion_apply_current_theme(TRUE);
+
+        $form['fusion_apply_settings'][$module . '_group'][$theme->name] = array(
+          '#type' => 'fieldset',
+          '#title' => $theme->info['name'] . ($theme->name == $current_theme ? ' (' . t('enabled + default') . ')' : ''),
+          '#collapsible' => TRUE,
+          '#collapsed' => $theme->name == $current_theme ? FALSE : TRUE,
+        );
+        if ($theme->name == $current_theme) {
+          $form['fusion_apply_settings'][$module . '_group'][$theme->name]['#attributes'] = array('class' => array('fusion_apply-ui-current-theme'));
+          $form['fusion_apply_settings'][$module . '_group'][$theme->name]['#weight'] = -10;
+        }
+        
+        // Add vertical_tabs inside of each theme's fieldset.
+        $form['fusion_apply_settings'][$module . '_group'][$theme->name]['groups'] = array(
+          '#type' => 'vertical_tabs',
+        );
+
+        // Create individual widgets for each skin.
+        foreach ($skin_infos as $skin_name => $skin_info) {
+          // Check if this skin is disabled.
+          if (empty($skin_info['status'][$theme->name])) {
+            continue;
+          }
+
+          // Check if this skin applies to this hook.
+          if (!is_array($skin_info['theme hooks']) || (!in_array('*', $skin_info['theme hooks']) && !_fusion_apply_is_featured($preprocess_hooks, $skin_info['theme hooks']))) {
+            $skin_info['#disabled'] = TRUE;
+            $skin_info['description'] .= ' <em>Not available for ' . implode(', ', $preprocess_hooks) . '.</em>';
+            $skin_info['weight'] = 50;
+          }
+
+          // Create widget.
+          if (!empty($skin_info['form callback']) && function_exists($skin_info['form callback'])) {
+            // @todo Allow for custom form callbacks.
+            $field = array();
+          }
+          else {
+            switch ($skin_info['type']) {
+              case 'checkboxes':
+                $field = array(
+                  '#type' => 'checkboxes',
+                  '#multiple' => TRUE,
+                  '#title' => t($skin_info['title']),
+                  '#options' => fusion_apply_ui_info_options_to_form_options($skin_info['options']),
+                  '#default_value' => isset($defaults[$skin_name]) ? $defaults[$skin_name] : array(),
+                  '#description' => t($skin_info['description']),
+                  '#weight' => isset($skin_info['weight']) ? $skin_info['weight'] : NULL,
+                  '#disabled' => isset($skin_info['#disabled']) ? $skin_info['#disabled'] : FALSE,
+                );
+                break;
+              case 'radios':
+                $field = array(
+                  '#type' => 'radios',
+                  '#title' => t($skin_info['title']),
+                  '#options' => array_merge(array('' => '&lt;none&gt;'), fusion_apply_ui_info_options_to_form_options($skin_info['options'])),
+                  '#default_value' => isset($defaults[$skin_name]) ? $defaults[$skin_name] : '',
+                  '#description' => t($skin_info['description']),
+                  '#weight' => isset($skin_info['weight']) ? $skin_info['weight'] : NULL,
+                  '#disabled' => isset($skin_info['#disabled']) ? $skin_info['#disabled'] : FALSE,
+                );
+                break;
+              case 'select':
+                $field = array(
+                  '#type' => 'select',
+                  '#title' => t($skin_info['title']),
+                  '#options' => array_merge(array('' => '<none>'), fusion_apply_ui_info_options_to_form_options($skin_info['options'])),
+                  '#default_value' => isset($defaults[$skin_name]) ? $defaults[$skin_name] : '',
+                  '#description' => t($skin_info['description']),
+                  '#weight' => isset($skin_info['weight']) ? $skin_info['weight'] : NULL,
+                  '#disabled' => isset($skin_info['#disabled']) ? $skin_info['#disabled'] : FALSE,
+                );
+                break;
+            }
+          }
+          if (empty($skin_info['group']) || empty($groups[$skin_info['group']])) {
+            $form['fusion_apply_settings'][$module . '_group'][$theme->name]['groups'][$skin_name] = $field;
+          }
+          else {
+            if (!isset($form['fusion_apply_settings'][$module . '_group'][$theme->name]['groups'][$skin_info['group']])) {
+              $group = $groups[$skin_info['group']];
+              $form['fusion_apply_settings'][$module . '_group'][$theme->name]['groups'][$skin_info['group']] = array(
+                '#type' => 'fieldset',
+                '#title' => t($group['title']),
+                '#description' => t($group['description']),
+                '#weight' => isset($group['weight']) ? $group['weight'] : NULL,
+              );
+            }
+            $form['fusion_apply_settings'][$module . '_group'][$theme->name]['groups'][$skin_info['group']][$skin_name] = $field;
+          }
+        }
+
+        // Check for access.
+        if (fusion_apply_handler('access_handler', 'edit advanced skin settings', $form_settings['access_handler'], $form, $form_state)) {
+          $skin_name = '_additional';
+          $form['fusion_apply_settings'][$module . '_group'][$theme->name]['groups']['_additional'] = array(
+            '#type' => 'fieldset',
+            '#title' => t('CSS classes'),
+            '#weight' => 50,
+          );
+          $form['fusion_apply_settings'][$module . '_group'][$theme->name]['groups']['_additional']['_additional'] = array(
+            '#type' => 'textfield',
+            '#title' => t('CSS classes'),
+            '#size' => 40,
+            '#description' => t('To add CSS classes manually, enter classes separated by a single space i.e. <code>first-class second-class</code>'),
+            '#default_value' => isset($defaults[$skin_name]) ? $defaults[$skin_name] : '',
+          );
+
+          // Only add validation handler once.
+          if (!isset($form['#validate']) || !in_array('fusion_apply_ui_form_validate', $form['#validate'])) {
+            $form['#validate'][] = 'fusion_apply_ui_form_validate';
+          }
+          // Special for views.
+          if (isset($form['buttons']['submit']['#validate']) && !in_array('fusion_apply_ui_form_validate', $form['buttons']['submit']['#validate'])) {
+            $form['buttons']['submit']['#validate'][] = 'fusion_apply_ui_form_validate';
+          }
+        }
+      }
+
+      // Add weight to additional settings and submit form elements.
+      $form['additional_settings']['#weight'] = 39;
+      $form['submit']['#weight'] = 40;
+
+      // Only add submit handler once.
+      // Find the property to check.
+      $attr = &$form;
+      foreach($form_settings['submit_handler_attach_to'] as $part) {
+        $attr = &$attr[$part];
+      }
+      if (!empty($attr) && !in_array('fusion_apply_ui_form_submit', $attr)) {
+        $string = $attr[] = 'fusion_apply_ui_form_submit';
+      }
+
+      // Keep looping, there might be other modules that implement the same form_id.
+    }
+
+  }
+}
+
+/**
+ * Form validation handler for fusion_apply_ui_form_alter().
+ */
+function fusion_apply_ui_form_validate($form, &$form_state) {
+  $form_id = $form_state['values']['form_id'];
+  $config = fusion_apply_get_config_info();
+  
+  $error = FALSE;
+  foreach ($config as $module => $module_settings) {
+    if (isset($module_settings['form'][$form_id]) && isset($form_state['values']['fusion_apply_settings'][$module . '_group'])) {
+      foreach ($form_state['values']['fusion_apply_settings'][$module . '_group'] as $theme_name => $theme) {
+        if (isset($theme['groups']['_additional'])) {
+          $form_settings = array_merge(fusion_apply_config_info_default(), $module_settings['form'][$form_id]);
+  
+          // Validate additional classes field.
+          if (preg_match('/[^a-zA-Z0-9\-\_\s]/', $theme['groups']['_additional']['_additional'])) {
+            form_set_error('fusion_apply_settings][' . $module . '_group][' . $theme_name . '][groups][_additional][_additional', t('Additional classes may only contain alphanumeric characters, spaces, - and _.'));
+            $error = TRUE;
+          }
+  
+          // Keep looping, there might be other modules that implement the same form_id.
+        }
+      }
+    }
+  }
+  
+  // Undo any grouping to ease processing on submit.
+  if (!$error) {
+    $groups = fusion_apply_get_group_info();
+    foreach ($config as $module => $module_settings) {
+      if (isset($module_settings['form'][$form_id]) && isset($form_state['values']['fusion_apply_settings'][$module . '_group'])) {
+        foreach ($form_state['values']['fusion_apply_settings'][$module . '_group'] as $theme_name => $theme) {
+          foreach ($groups as $group_name => $group) {
+            if (!empty($theme['groups'][$group_name]) && is_array($theme['groups'][$group_name])) {
+              $group_values = $theme['groups'][$group_name];
+              unset($form_state['values']['fusion_apply_settings'][$module . '_group'][$theme_name]['groups'][$group_name]);
+              $form_state['values']['fusion_apply_settings'][$module . '_group'][$theme_name]['groups'] = array_merge($form_state['values']['fusion_apply_settings'][$module . '_group'][$theme_name]['groups'], $group_values);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Form submission handler for fusion_apply_ui_form_alter().
+ */
+function fusion_apply_ui_form_submit($form, &$form_state) {
+
+  $form_id = $form_state['values']['form_id'];
+  $config = fusion_apply_get_config_info();
+  $current_theme = fusion_apply_current_theme(TRUE);
+  
+  foreach ($config as $module => $module_settings) {
+    if (isset($module_settings['form'][$form_id])) {
+      $form_settings = array_merge(fusion_apply_config_info_default(), $module_settings['form'][$form_id]);
+      fusion_apply_handler('submit_handler', '', $form_settings['submit_handler'], $form, $form_state, $module, $form_settings);
+      // Keep looping, there might be other modules that implement the same form_id.
+    }
+  }
+}
+
+/**
+ * Adds additional "edit skin" link to blocks page.
+ */
+function fusion_apply_ui_preprocess_block_admin_display_form(&$variables) {
+  $variables['theme_hook_suggestions'][] = 'fusion_apply_ui_block_admin_display_form';
+  // Add each block in the form to the appropriate place in the block listing.
+  foreach (element_children($variables['form']['blocks']) as $i) {
+    $block = &$variables['form']['blocks'][$i];
+
+    // Fetch the region for the current block.
+    $region = (isset($block['region']['#default_value']) ? $block['region']['#default_value'] : BLOCK_REGION_NONE);
+
+    $variables['block_listing'][$region][$i]->accelerator_link = l(t('edit skins'), 'admin/appearance/fusion/edit/nojs/block/' . 
+      $variables['form']['blocks'][$i]['module']['#value'] . '__' . $variables['form']['blocks'][$i]['delta']['#value'] . '/configure');
+  }
+
+}
+
+/**
+ * Implements hook_preprocess().  Used to add contextual links.
+ */
+function fusion_apply_ui_preprocess(&$variables, $hook) {
+
+  $config = fusion_apply_get_config_info();
+
+  $original_hook = $hook;
+  $theme_registry = theme_get_registry();
+  if (isset($theme_registry[$hook]['original hook'])) {
+    $original_hook = $theme_registry[$hook]['original hook'];
+  }
+
+  foreach ($config as $module => $module_settings) {
+    if (!empty($module_settings['contextual_links'][$original_hook])) {
+      // Set contextual links.
+      if ($contextual_links = fusion_apply_handler('contextual_links', '', $module_settings['contextual_links'][$original_hook]['contextual_links_handler'], $variables)) {
+        fusion_apply_ui_contextual_links($variables, $original_hook, $contextual_links);
+      }
+    }
+  }
+}
+
+/**
+ * Set contextual menu items for Fusion Apply.
+ *
+ * @param $variables
+ *   The $variables parameter from a preprocess function.
+ * @param $hook
+ *   The $hook parameter from a preprocess function.
+ * @param $contextual_links
+ *   An array of contextual links data as returned from Fusion Apply's contextual
+ *   links handler.
+ */
+function fusion_apply_ui_contextual_links(&$variables, $hook, $contextual_links) {
+  _fusion_apply_ui_set_contextual_links($hook, $contextual_links);
+
+  $hooks = theme_get_registry();
+
+  // Determine the primary theme function argument.
+  if (isset($hooks[$hook]['variables'])) {
+    $keys = array_keys($hooks[$hook]['variables']);
+    $key = $keys[0];
+  }
+  else {
+    $key = $hooks[$hook]['render element'];
+  }
+  if (isset($variables[$key])) {
+    $element =& $variables[$key];
+  }
+
+  if (isset($element) && is_array($element)) {
+    foreach ($contextual_links as $key => $contextual_link) {
+      $element['#contextual_links'][$key] = $contextual_link;
+    }
+  }
+}
+
+/**
+ * Get all contextual links as returned from Fusion Apply's contextual links handler.
+ *
+ * @return
+ *   An array of contextual links data.
+ */
+function fusion_apply_ui_get_contextual_links() {
+  return _fusion_apply_ui_set_contextual_links();
+}
+
+/**
+ * Store contextual links internally for future use.
+ *
+ * @return
+ *   An array of contextual links data.
+ */
+function _fusion_apply_ui_set_contextual_links($hook = NULL, $links = NULL) {
+  static $contextual_links = array();
+
+  if ($hook && $links) {
+    if (!isset($contextual_links[$hook])) {
+      $contextual_links[$hook] = $links;
+    }
+  }
+
+  return $contextual_links;
+}
+
+/**
+ * Helper function to determine whether one of a set of hooks exists in a list
+ * of required theme hooks.
+ *
+ * @param $preprocess_hooks
+ *   An array of theme hooks available to this element.
+ * @param $theme_hooks
+ *   An array of allowed theme hooks.
+ *
+ * @return
+ *   TRUE if an overlap is found, FALSE otherwise.
+ *
+ * @todo Rename function to be more descriptive.
+ */
+function _fusion_apply_is_featured($preprocess_hooks, $theme_hooks) {
+  foreach ($preprocess_hooks as $preprocess_hook) {
+    if (in_array($preprocess_hook, $theme_hooks)) {
+      return TRUE;
+    }
+  }
+  return FALSE;
+}
+
+/**
+ * Helper function to retrieve a unique id for each skin class. Used by AJAX.
+ *
+ * @return
+ *   A unique ID number.
+ *
+ * @todo Evaluate the usefulness of this function. Should it go into
+ *   a UI front-end specific file?
+ */
+function _fusion_apply_ui_ajax_id() {
+  static $fusion_apply_id = 0;
+  return ++$fusion_apply_id;
+}
+
+/**
+ * Helper function to convert an array of options, as specified in the .info
+ * file, into an array usable by Form API.
+ *
+ * @param $options
+ *   An array containing at least the 'class' and 'label' keys.
+ *
+ * @return
+ *   A Form API compatible array of options.
+ *
+ * @todo Rename function to be more descriptive.
+ */
+function fusion_apply_ui_info_options_to_form_options($options) {
+  $form_options = array();
+  foreach ($options as $option_name => $option) {
+    $form_options[$option_name] = t($option['title']);
+  }
+  return $form_options;
+}

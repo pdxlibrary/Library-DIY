@@ -1,0 +1,730 @@
+<?php
+
+/**
+ * @file
+ * Tests for the Fusion Apply module.
+ */
+
+/**
+ * Tests basic module installation.
+ */
+class FusionApplyInstallationTestCase extends DrupalWebTestCase {
+  protected $profile = 'testing';
+
+  public static function getInfo() {
+    return array(
+      'name' => 'Installation',
+      'description' => 'Tests basic module installation.',
+      'group' => 'Fusion Accelerator',
+    );
+  }
+
+  function setUp() {
+    parent::setUp();
+  }
+
+  /**
+   * Tests installation and uninstallation of Fusion Apply modules.
+   */
+  function testInstallation() {
+    $this->admin_user = $this->drupalCreateUser(array(
+      'access administration pages',
+      'administer modules',
+      'administer permissions',
+    ));
+    $this->drupalLogin($this->admin_user);
+
+    // Install the modules.
+    $edit = array(
+      'modules[Fusion][fusion_apply][enable]' => TRUE,
+      'modules[Fusion][fusion_apply_ui][enable]' => TRUE,
+      'modules[Fusion][fusion_apply_rules][enable]' => TRUE,
+    );
+    $this->drupalPost('admin/modules', $edit, t('Save configuration'));
+
+    // Grant permissions.
+    $edit = array(
+      DRUPAL_AUTHENTICATED_RID . '[administer fusion]' => TRUE,
+      DRUPAL_AUTHENTICATED_RID . '[edit skin settings]' => TRUE,
+      DRUPAL_AUTHENTICATED_RID . '[edit advanced skin settings]' => TRUE,
+    );
+    $this->drupalPost('admin/people/permissions', $edit, t('Save permissions'));
+
+    // Verify that we are able to access Fusion Apply's administration pages.
+    $this->drupalGet('admin/appearance/fusion');
+    $this->assertResponse(200);
+
+    // Uninstall the modules.
+    $edit = array(
+      'modules[Fusion][fusion_apply_rules][enable]' => FALSE,
+    );
+    $this->drupalPost('admin/modules', $edit, t('Save configuration'));
+    $edit = array(
+      'modules[Fusion][fusion_apply_ui][enable]' => FALSE,
+    );
+    $this->drupalPost('admin/modules', $edit, t('Save configuration'));
+    $edit = array(
+      'modules[Fusion][fusion_apply][enable]' => FALSE,
+    );
+    $this->drupalPost(NULL, $edit, t('Save configuration'));
+    // First, uninstall Fusion Rules.
+    $edit = array(
+      'uninstall[fusion_apply_rules]' => TRUE,
+    );
+    $this->drupalPost('admin/modules/uninstall', $edit, t('Uninstall'));
+    $this->drupalPost(NULL, array(), t('Uninstall'));    
+    // Next, uninstall Fusion Apply UI.
+    $edit = array(
+      'uninstall[fusion_apply_ui]' => TRUE,
+    );
+    $this->drupalPost('admin/modules/uninstall', $edit, t('Uninstall'));
+    $this->drupalPost(NULL, array(), t('Uninstall'));
+    // Finally, uninstall Fusion Apply.
+    $edit = array(
+      'uninstall[fusion_apply]' => TRUE,
+    );
+    $this->drupalPost('admin/modules/uninstall', $edit, t('Uninstall'));
+    $this->drupalPost(NULL, array(), t('Uninstall'));
+
+    // Verify that no system variables are left.
+    $count = db_query("SELECT 1 FROM {variable} WHERE name LIKE 'fusion_apply_*'")->fetchField();
+    $this->assertEqual($count, 0, t('No variables found.'));
+  }
+}
+
+/**
+ * Tests API functionality.
+ *
+ * @link http://drupal.org/node/953336#comment-3738456 Make sure this patch is applied to drupal core @endlink
+ */
+class FusionApplyApiTestCase extends DrupalWebTestCase {
+  protected $profile = 'testing';
+
+  public static function getInfo() {
+    return array(
+      'name' => 'API',
+      'description' => 'Tests Fusion Apply API functionality.',
+      'group' => 'Fusion Accelerator',
+    );
+  }
+
+  public function setUp() {
+    parent::setUp(array('fusion_apply', 'fusion_apply_test', 'fusion_apply_test_incompatible'));
+    // Enable fusion_apply_test_subtheme, but NOT the basetheme.
+    theme_enable(array('fusion_apply_test_subtheme'));
+  }
+
+  /**
+   * Pass if the message $text was set by one of the CRUD hooks in
+   * fusion_apply_test.module, i.e., if the $text is an element of
+   * $_SESSION['fusion_apply_test'].
+   *
+   * @param $text
+   *   Plain text to look for.
+   * @param $message
+   *   Message to display.
+   * @param $group
+   *   The group this message belongs to, defaults to 'Other'.
+   * @return
+   *   TRUE on pass, FALSE on fail.
+   */
+  protected function assertHookMessage($text, $message = NULL, $group = 'Other') {
+    if (!isset($message)) {
+      $message = $text;
+    }
+    return $this->assertTrue(array_search($text, $_SESSION['fusion_apply_test']) !== FALSE, $message, $group);
+  }
+
+  /**
+   * Tests fusion_apply_implements().
+   */
+  public function testFusionApplyImplements() {
+    // Verify that fusion_apply_implements() only returns extensions that are
+    // compatible with this version of Fusion Apply.
+    $extensions = fusion_apply_implements();
+
+    // The expected extensions and their specific properties, if any.
+    $all_expected = array(
+      // Fusion Apply is always expected.
+      'fusion_apply' => array(),
+      // Node is a required core module, so always expected.
+      'node' => array(
+        'version' => VERSION,
+        'path' => drupal_get_path('module', 'fusion_apply') . '/modules',
+      ),
+      // fusion_apply_test has been installed.
+      'fusion_apply_test' => array(
+        'directory' => 'skins',
+      ),
+      'fusion_apply_test_basetheme' => array(
+        'type' => 'theme',
+        'api' => 2,
+        'directory' => 'skins',
+        'base themes' => array(),
+        'sub themes' => drupal_map_assoc(array('fusion_apply_test_subtheme')),
+      ),
+      'fusion_apply_test_subtheme' => array(
+        'type' => 'theme',
+        'api' => 2,
+        'directory' => 'skins',
+        'base themes' => drupal_map_assoc(array('fusion_apply_test_basetheme')),
+        'sub themes' => array(),
+      ),
+    );
+    // When running tests on Fusion Apply code packaged by drupal.org, all 'version'
+    // properties will have the version of the Fusion Apply module. When running on a
+    // repository checkout, the version is NULL (undefined).
+    $fusion_apply_module_info = system_get_info('module', 'fusion_apply');
+    $fusion_apply_module_version = (!empty($fusion_apply_module_info['version']) ? $fusion_apply_module_info['version'] : NULL);
+    foreach ($all_expected as $name => $expected) {
+      // Populate defaults.
+      $expected += array(
+        'type' => 'module',
+        'name' => $name,
+        'version' => $fusion_apply_module_version,
+      );
+      $expected += array(
+        'path' => drupal_get_path($expected['type'], $name),
+        'directory' => NULL,
+      );
+      $this->assertEqual($extensions[$name], $expected, t('%extension implementation found:<pre>@data</pre>', array(
+        '%extension' => $name,
+        '@data' => var_export($extensions[$name], TRUE),
+      )));
+      unset($extensions[$name]);
+    }
+    // Ensure that fusion_apply_test_incompatible is not contained.
+    $this->assertTrue(!isset($extensions['fusion_apply_test_incompatible']), 'Incompatible extension not found.');
+    // After asserting all expected, the list of extensions should be empty.
+    $this->assertTrue(empty($extensions), 'No unexpected extensions found.');
+  }
+
+  /**
+   * Tests hook_fusion_apply_skin_info().
+   */
+  public function testFusionApplySkinInfo() {
+    // Verify that fusion_apply_get_skin_info() finds and returns all registered skins
+    // in $module.fusion.inc files as well as Fusion Apply plugin files, but does not
+    // return skins that are incompatible with the current Fusion Apply API version.
+    $skin_info = fusion_apply_get_skin_info();
+    $this->verbose('Skins: ' . var_export($skin_info, TRUE));
+    $module = 'fusion_apply_test';
+    $path = drupal_get_path('module', $module);
+
+    // fusion_apply_test_font is registered via hook_fusion_apply_skin_info() in
+    // fusion_apply_test.fusion.inc.
+    // @todo Figure out why this is failing.  Manual tests for skin plugins via $module.fusion.inc are fine.  
+    $this->assertTrue(isset($skin_info['fusion_apply_test_font']), "Skin registered in {$module}.fusion.inc found.");
+    $this->assertEqual($skin_info['fusion_apply_test_font']['source']['path'], $path, t('Skin path points to module directory: @path', array(
+      '@path' => $skin_info['fusion_apply_test_font']['source']['path'],
+    )));
+    unset($skin_info['fusion_apply_test_font']);
+
+    // fusion_apply_test_example is registered via hook_fusion_apply_skin_PLUGIN_info() in
+    // skins/example.inc.
+    $this->assertTrue(isset($skin_info['fusion_apply_test_example']), 'Skin registered in plugin file found.');
+    $this->assertEqual($skin_info['fusion_apply_test_example']['source']['path'], $path . '/skins/example', t('Skin path points to plugin directory: @path', array(
+      '@path' => $skin_info['fusion_apply_test_example']['source']['path'],
+    )));
+    unset($skin_info['fusion_apply_test_example']);
+
+    // fusion_apply_test_basetheme is registered via hook_fusion_apply_skin_info() in
+    // fusion_apply_test_basetheme.fusion.inc.
+    $this->assertTrue(isset($skin_info['fusion_apply_test_basetheme']), 'Skin registered in $basetheme.fusion.inc found.');
+    $this->assertEqual($skin_info['fusion_apply_test_basetheme']['source']['path'], $path . '/themes/fusion_apply_test_basetheme', t('Skin path points to basetheme directory: @path', array(
+      '@path' => $skin_info['fusion_apply_test_basetheme']['source']['path'],
+    )));
+    $default_theme = variable_get('theme_default', 'bartik');
+    $this->assertEqual($skin_info['fusion_apply_test_basetheme']['status'][$default_theme], 0, 'Basetheme skin is disabled for default theme.');
+    $this->assertEqual($skin_info['fusion_apply_test_basetheme']['status']['fusion_apply_test_basetheme'], 1, 'Basetheme skin is enabled for Fusion Apply test basetheme.');
+    unset($skin_info['fusion_apply_test_basetheme']);
+
+    // fusion_apply_test_subtheme is registered via hook_fusion_apply_skin_info() in
+    // fusion_apply_test_subtheme.fusion.inc.
+    $this->assertTrue(isset($skin_info['fusion_apply_test_subtheme']), 'Skin registered in $subtheme.fusion.inc found.');
+    $this->assertEqual($skin_info['fusion_apply_test_subtheme']['source']['path'], $path . '/themes/fusion_apply_test_subtheme', t('Skin path points to subtheme directory: @path', array(
+      '@path' => $skin_info['fusion_apply_test_subtheme']['source']['path'],
+    )));
+    unset($skin_info['fusion_apply_test_subtheme']);
+
+    // Ensure that fusion_apply_test_incompatible is not contained.
+    $this->assertTrue(!isset($skin_info['fusion_apply_test_incompatible']), 'Incompatible skin not found.');
+    // After asserting all expected, the list of skins should be empty.
+    $this->assertTrue(empty($skin_info), t('No unexpected skins found: <pre>@data</pre>', array(
+      '@data' => var_export($skin_info, TRUE),
+    )));
+  }
+
+
+  /**
+   * Tests hook_fusion_apply_group_info().
+   */
+  public function testFusionApplyGroupInfo() {
+    $group_info = fusion_apply_get_group_info();
+
+    // Verify that default skin groups are found.
+    $all_expected = array(
+      'general' => array(
+        'title' => t('General'),
+        'weight' => -10,
+      ),
+      'box' => array(
+        'title' => t('Box styles'),
+      ),
+      'typography' => array(
+        'title' => t('Typography'),
+      ),
+      'layout' => array(
+        'title' => t('Layout'),
+      ),
+    );
+    foreach ($all_expected as $name => $expected) {
+      // We don't want to be pixel-perfect here.
+      if (isset($group_info[$name]['description'])) {
+        $expected['description'] = $group_info[$name]['description'];
+      }
+      $expected += array(
+        'description' => '',
+        'weight' => 0,
+      );
+      $this->assertEqual($group_info[$name], $expected, t('Group %group found:<pre>@data</pre>', array(
+        '%group' => $name,
+        '@data' => var_export($group_info[$name], TRUE),
+      )));
+      unset($group_info[$name]);
+    }
+    // After asserting all expected, the list of extensions should be empty.
+    $this->assertTrue(empty($group_info), 'No unexpected groups found.');
+  }
+
+  /**
+   * Tests hook_fusion_apply_config_info().
+   */
+  public function testFusionApplyConfigInfo() {
+    // Verify that fusion_apply_get_config_info() finds all existing and compatible
+    // hook_fusion_apply_config_info() implementations.
+    $config = fusion_apply_get_config_info();
+
+    // Fusion Apply's own implementation in fusion_apply.fusion.inc should always be found.
+    $this->assertTrue(isset($config['rules']), 'hook_fusion_apply_config_info() in $module.fusion.inc found.');
+    unset($config['rules']);
+
+    // Fusion Apply's implementation on behalf of Node module in modules/node.fusion.inc
+    // should be found.
+    $this->assertTrue(isset($config['node']), 'hook_fusion_apply_config_info() in a custom path found.');
+    unset($config['node']);
+
+    // Ensure that fusion_apply_test_incompatible is not contained.
+    $this->assertTrue(!isset($config['fusion_apply_test_incompatible']), 'Incompatible hook_fusion_apply_config_info() not found.');
+    // After asserting all expected, the list of skins should be empty.
+    $this->assertTrue(empty($config), 'No unexpected skins found.');
+  }
+
+  /**
+   * Test hook invocations for CRUD operations on skin configurations.
+   */
+  public function testFusionApplySkinHooks() {
+    $skin = (object) array(
+      'theme' => 'fusion_apply_test_subtheme',
+      'module' => 'block',
+      'element' => 'system__user-menu',
+      'skin' => 'fusion_apply_test_subtheme',
+      'options' => array('option1', 'option2'),
+      'status' => 1,
+    );
+    $_SESSION['fusion_apply_test'] = array();
+    fusion_apply_skin_save($skin);
+
+    $this->assertHookMessage('fusion_apply_test_fusion_apply_skin_presave called');
+    $this->assertHookMessage('fusion_apply_test_fusion_apply_skin_insert called');
+
+    $_SESSION['fusion_apply_test'] = array();
+    $skin = fusion_apply_skin_load($skin->sid);
+
+    $this->assertHookMessage('fusion_apply_test_fusion_apply_skin_load called');
+
+    $_SESSION['fusion_apply_test'] = array();
+    $skin = fusion_apply_skin_load_unchanged($skin->sid);
+
+    $this->assertHookMessage('fusion_apply_test_fusion_apply_skin_load called');
+
+    $_SESSION['fusion_apply_test'] = array();
+    $skin->options = array('option3');
+    fusion_apply_skin_save($skin);
+
+    $this->assertHookMessage('fusion_apply_test_fusion_apply_skin_presave called');
+    $this->assertHookMessage('fusion_apply_test_fusion_apply_skin_update called');
+
+    $_SESSION['fusion_apply_test'] = array();
+    fusion_apply_skin_delete($skin->sid);
+
+    $this->assertHookMessage('fusion_apply_test_fusion_apply_skin_delete called');
+  }
+
+  /**
+   * Test fusion_apply_skin_save() against invalid entries.
+   */
+  public function testFusionApplySkinLoadSave() {
+    // Only save valid skins.
+    $skin = (object) array(
+      'theme' => '',
+      'module' => 'block',
+      'element' => 'system__user-menu',
+      'skin' => 'fusion_apply_test_subtheme',
+      'options' => array('option1', 'option2'),
+      'status' => 1,
+    );
+    $this->assertFalse(fusion_apply_skin_save($skin), 'Skin configuration object was not saved when $skin->theme was empty.');
+
+    $skin->theme = 'fusion_apply_test_subtheme';
+    $skin->module = '';
+    $this->assertFalse(fusion_apply_skin_save($skin), 'Skin configuration object was not saved when $skin->module was empty.');
+
+    $skin->module = 'block';
+    $skin->element = '';
+    $this->assertFalse(fusion_apply_skin_save($skin), 'Skin configuration object was not saved when $skin->element was empty.');
+
+    $skin->element = 'system-user-menu';
+    $skin->skin = '';
+    $this->assertFalse(fusion_apply_skin_save($skin), 'Skin configuration object was not saved when $skin->skin was empty.');
+
+    $skin->skin = 'fusion_apply_test_subtheme';
+    $skin->options = '';
+    $this->assertFalse(fusion_apply_skin_save($skin), 'Skin configuration object was not saved when $skin->options was not an array.');
+
+    $skin->options = array();
+    $this->assertFalse(fusion_apply_skin_save($skin), 'Skin configuration object was not saved when $skin->options was an empty array.');
+
+    $skin->options = array('option1' => 0, 'option2' => 0);
+    $this->assertFalse(fusion_apply_skin_save($skin), 'Skin configuration object was not saved when $skin->options was a complex empty array.');
+
+    $skin->options = array('option1', 'option2');
+    $this->assertTrue(fusion_apply_skin_save($skin), 'Skin configuration object was saved.');
+    $this->assertTrue(isset($skin->sid), 'The sid was added to the skin configuration object.');
+
+    // Test loading a skin configuration.
+    $loaded_skin = fusion_apply_skin_load($skin->sid);
+    $this->assertTrue(is_array($skin->options), 'Options for the skin configuration object were unserialized.');
+
+    $this->assertTrue($loaded_skin->theme == $skin->theme && $loaded_skin->module == $skin->module && $loaded_skin->element == $skin->element && $loaded_skin->status == $skin->status && $loaded_skin->options[0] == $skin->options[0] && $loaded_skin->options[1] == $skin->options[1], 'Skin configuration object was loaded properly.');
+
+    // Save a second skin.
+    $second_skin = (object) array(
+      'theme' => 'fusion_apply_test_subtheme',
+      'module' => 'block',
+      'element' => 'system__main',
+      'skin' => 'fusion_apply_test_subtheme',
+      'options' => array('option3'),
+      'status' => 1,
+    );
+    fusion_apply_skin_save($second_skin);
+
+    // Test loading multiple skin configurations.
+    $skins = fusion_apply_skin_load_multiple(array($skin->sid, $second_skin->sid));
+    $this->assertTrue(count($skins) == 2 && isset($skins[$skin->sid]->sid) && isset($skins[$second_skin->sid]->sid), 'Successfully loaded multiple skins.');
+
+    // Test loading all skin configurations.
+    $skins = fusion_apply_skin_load_multiple();
+    $this->assertTrue(count($skins) == 2 && isset($skins[$skin->sid]->sid) && isset($skins[$second_skin->sid]->sid), 'Successfully loaded all skins.');
+  }
+}
+
+
+/**
+ * Tests API functionality.
+ *
+ * @link http://drupal.org/node/953336#comment-3738456 Make sure this patch is applied to drupal core @endlink
+ */
+class FusionApplyDisplayTestCase extends DrupalWebTestCase {
+  protected $profile = 'testing';
+
+  public static function getInfo() {
+    return array(
+      'name' => 'Display',
+      'description' => 'Tests if applied skins appear on the front-end.',
+      'group' => 'Fusion Accelerator',
+    );
+  }
+
+  public function setUp() {
+    parent::setUp(array('block', 'fusion_apply', 'fusion_apply_test', 'devel'));
+
+    $this->admin_user = $this->drupalCreateUser(array(
+      'administer blocks',
+    ));
+    $this->drupalLogin($this->admin_user);
+
+    // Enable main system block for content region and the user menu block for
+    // the first sidebar.
+    // @see http://drupal.org/node/913086
+    $default_theme = variable_get('theme_default', 'bartik');
+    db_merge('block')
+      ->key(array(
+        'theme' => $default_theme,
+        'module' => 'system',
+        'delta' => 'main',
+      ))
+      ->fields(array(
+        'status' => 1,
+        'region' => 'content',
+        'pages' => '',
+      ))
+      ->execute();
+    db_merge('block')
+      ->key(array(
+        'theme' => $default_theme,
+        'module' => 'system',
+        'delta' => 'user-menu',
+      ))
+      ->fields(array(
+        'status' => 1,
+        'region' => 'sidebar_first',
+        'pages' => '',
+      ))
+      ->execute();
+
+    // Enable Garland.
+    theme_enable(array('garland'));
+  }
+
+  /**
+   * Asserts that a class is set for the given element id.
+   *
+   * @param $id
+   *   Id of the HTML element to check.
+   * @param $class
+   *   The class name to check for.
+   * @param $message
+   *   Message to display.
+   * @return
+   *   TRUE on pass, FALSE on fail.
+   */
+  function assertFusionApplyClass($id, $class, $message = '') {
+    $elements = $this->xpath('//div[@id=:id]', array(':id' => $id));
+    $class_attr = (string) $elements[0]['class'];
+    $this->assertTrue(strpos($class_attr, ' ' . $class . ' '), $message);
+  }
+
+  /**
+   * Asserts that a class is not set for the given element id.
+   *
+   * @param $id
+   *   Id of the HTML element to check.
+   * @param $class
+   *   The class name to check for.
+   * @param $message
+   *   Message to display.
+   * @return
+   *   TRUE on pass, FALSE on fail.
+   */
+  function assertNoFusionApplyClass($id, $class, $message = '') {
+    $elements = $this->xpath('//div[@id=:id]', array(':id' => $id));
+    $class_attr = (string) $elements[0]['class'];
+    $this->assertFalse(strpos($class_attr, ' ' . $class . ' '), $message);
+  }
+
+  public function testFusionApplyDisplayed() {
+    // Save a skin configuration object.
+    $skin = (object) array(
+      'theme' => 'bartik',
+      'module' => 'block',
+      'element' => 'system__user-menu',
+      'skin' => 'fusion_apply_test_font',
+      'options' => array('font_1'),
+      'status' => 1,
+    );
+    $this->assertTrue(fusion_apply_skin_save($skin), 'Skin configuration object was saved.');
+    $this->verbose(print_r($skin, TRUE));
+
+    // Go to the front page.
+    $this->drupalGet('');
+    $this->assertFusionApplyClass('block-system-user-menu', 'font-1', 'CSS class of configured skin option found.');
+
+    $content = $this->drupalGetContent();
+
+    $css = drupal_get_path('module', 'fusion_apply_test') . '/fusion_apply_test.css';
+    $this->assertRaw($css, t('Stylesheet was included on page.'));
+
+    $js = drupal_get_path('module', 'fusion_apply_test') . '/fusion_apply_test.js';
+    $this->assertRaw($js, t('Javascript was included on page.'));
+  }
+
+  /**
+   * Tests loading and saving of rules.
+   */
+  public function testFusionApplyRulesLoadSave() {
+    // Test saving a rule.
+    $rule = (object) array(
+      'title' => 'Rule 1',
+      'rule_type' => 'page',
+      'node_types' => array(),
+      'roles' => array(),
+      'visibility' => 0, // Show on all pages, except those listed.
+      'pages' => '',
+    );
+    $this->assertTrue(fusion_apply_rule_save($rule), 'Rule object was saved when no filtering is applied.');
+
+    $rule->title = '';
+    $this->assertFalse($status = fusion_apply_rule_save($rule), 'Rule object was not saved when the required $rule->title field was empty.');
+    $this->pass('Status: ' . ($status ? 'true' : 'false'));
+    $rule->title = 'Rule 1';
+
+    $rule->rule_type = '';
+    $this->assertFalse(fusion_apply_rule_save($rule), 'Rule object was not saved when the required $rule->rule_type field was empty.');
+    $rule->rule_type = 'page';
+
+    $rule->node_types = FALSE;
+    $this->assertFalse(fusion_apply_rule_save($rule), 'Rule object was not saved when $rule->node_types was not an array.');
+    $rule->node_types = array();
+
+    $rule->roles = FALSE;
+    $this->assertFalse(fusion_apply_rule_save($rule), 'Rule object was not saved when $rule->roles was not an array.');
+    $rule->roles = array();
+
+    // Test loading a rule.
+    $loaded_rule = fusion_apply_rule_load($rule->rid);
+    $this->assertTrue(is_array($loaded_rule->node_types), 'Node types for the rule object were unserialized.');
+    $this->assertTrue(is_array($loaded_rule->roles), 'Roles for the rule object were unserialized.');
+
+    $this->assertTrue($loaded_rule->title == $rule->title && $loaded_rule->rule_type == $rule->rule_type && $loaded_rule->node_types == $rule->node_types && $loaded_rule->roles == $rule->roles && $loaded_rule->visibility == $rule->visibility && $loaded_rule->pages == $rule->pages, 'Rule object was loaded properly.');
+
+    // Save a second rule.
+    $second_rule = (object) array(
+      'title' => 'Rule 2',
+      'rule_type' => 'page',
+      'node_types' => array(),
+      'roles' => array(),
+      'visibility' => 0, // Show on all pages, except those listed.
+      'pages' => '',
+    );
+    fusion_apply_rule_save($second_rule);
+
+    // Test loading multiple skin configurations.
+    $rules = fusion_apply_rule_load_multiple(array($rule->rid, $second_rule->rid));
+    $this->assertTrue(count($rules) == 2 && isset($rules[$rule->rid]->rid) && isset($rules[$second_rule->rid]->rid), 'Successfully loaded multiple rules.');
+
+    // Test loading all skin configurations.
+    $rules = fusion_apply_rule_load_multiple();
+    $this->assertTrue(count($rules) == 2 && isset($rules[$rule->rid]->rid) && isset($rules[$second_rule->rid]->rid), 'Successfully loaded all rules.');
+  }
+}
+
+/**
+ * Tests API functionality.
+ */
+class FusionApplyRulesApiTestCase extends DrupalWebTestCase {
+  protected $profile = 'testing';
+
+  public static function getInfo() {
+    return array(
+      'name' => 'Rules API',
+      'description' => 'Tests Fusion Apply Rules API functionality.',
+      'group' => 'Fusion Accelerator',
+    );
+  }
+
+  function setUp() {
+    parent::setUp(array('fusion_apply', 'fusion_apply_rules'));
+
+    // Enable php module.
+    module_enable(array('php'));
+
+    // Set up some nodes.
+    $this->nodes['article'] = $this->drupalCreateNode(array('type' => 'article', 'title' => 'Article node'));
+    $this->nodes['page']    = $this->drupalCreateNode(array('type' => 'page', 'title' => 'Page node'));
+
+    // Set up some users.
+    $this->users['normal_user'] = $this->drupalCreateUser(array());
+  }
+
+  /**
+   * Tests visibility of rules.
+   */
+  public function testFusionApplyRulesVisibility() {
+    $front = variable_get('site_frontpage', 'node');
+
+    $article = $this->nodes['article'];
+    $page    = $this->nodes['page'];
+
+    $rule = (object) array(
+      'title' => 'Rule 1',
+      'rule_type' => 'page',
+      'node_types' => array(),
+      'roles' => array(),
+      'visibility' => 0, // Show on all pages, except those listed.
+      'pages' => '',
+    );
+    fusion_apply_rule_save($rule);
+
+    // Test visibility when no filters are applied.
+    $this->drupalGet('');
+    $this->assertTrue(fusion_apply_rule_is_visible($rule->rid), 'The rule is visible on the front page.');
+
+    $this->drupalGet('node/' . $article->nid);
+    $this->assertTrue(fusion_apply_rule_is_visible($rule->rid), 'The rule is visible for an article node.');
+
+    $this->drupalGet('node/' . $page->nid);
+    $this->assertTrue(fusion_apply_rule_is_visible($rule->rid), 'The rule is visible for a basic page node.');
+
+    // Test visibility with a node type filter.
+    $rule->node_types = array('article' => 'article');
+    fusion_apply_rule_save($rule);
+
+    $this->assertFalse(fusion_apply_rule_is_visible($rule->rid, $front), "The rule is not visible on the front page when it has the node type filter set to 'article'.");
+    $this->assertTrue(fusion_apply_rule_is_visible($rule->rid, 'node/' . $article->nid), "The rule is visible for an article node when it has the node type filter set to 'article'.");
+    $this->assertFalse(fusion_apply_rule_is_visible($rule->rid, 'node/' . $page->nid), "The rule is not visible for a basic page node when it has the node type filter set to 'article'.");
+
+    // @todo Need to test with node/add/* path.
+    // Problem to solve: node_type_get_types() always returns an empty array when running tests.
+
+    // Test visibility with a roles filter.
+    $rule->node_types = array();
+    $rule->roles = array(2 => '2');
+    fusion_apply_rule_save($rule);
+
+    // @todo Is there a way to test role API functionality without temporarily
+    //   changing global user?
+    global $user;
+    $current_user = $user;
+
+    $user = $this->users['normal_user'];
+    $this->assertTrue(fusion_apply_rule_is_visible($rule->rid, $front), "The rule is visible for a logged-in user when it has a role filter set to 'authenticated user'.");
+
+    $user = drupal_anonymous_user();
+    $this->assertFalse(fusion_apply_rule_is_visible($rule->rid, $front), "The rule is not visible for an anonymous user when it has a role filter set to 'authenticated user'.");
+
+    $user = $current_user;
+
+
+    // Test visibility with an exclude page filter.
+    $rule->roles = array();
+    $rule->pages = "<front>";
+    fusion_apply_rule_save($rule);
+
+    $this->assertFalse(fusion_apply_rule_is_visible($rule->rid, $front), "The rule is not visible on the front page when it has the page filter set to exclude '&lt;front&gt'.");
+    $this->assertTrue(fusion_apply_rule_is_visible($rule->rid, 'node/' . $article->nid), "The rule is visible for an article node when it has the page filter set to exclude '&lt;front&gt'.");
+    $this->assertTrue(fusion_apply_rule_is_visible($rule->rid, 'node/' . $page->nid), "The rule is visible for a basic page node when it has the page filter set to exclude '&lt;front&gt'.");
+
+    // Test visibility with an include page filter.
+    $rule->visibility = 1;
+    fusion_apply_rule_save($rule);
+
+    $this->assertTrue(fusion_apply_rule_is_visible($rule->rid, $front), "The rule is visible on the front page when it has the page filter set to include '&lt;front&gt'.");
+    $this->assertFalse(fusion_apply_rule_is_visible($rule->rid, 'node/' . $article->nid), "The rule is not visible for an article node when it has the page filter set to include '&lt;front&gt'.");
+    $this->assertFalse(fusion_apply_rule_is_visible($rule->rid, 'node/' . $page->nid), "The rule is not visible for a basic page node when it has the page filter set to include '&lt;front&gt'.");
+
+    // Test visibility with a php page filter.
+    $rule->visibility = 2;
+    $rule->pages = "<?php\nreturn FALSE;\n?>";
+    fusion_apply_rule_save($rule);
+
+    $this->assertFalse(fusion_apply_rule_is_visible($rule->rid, $front), "The rule is not visible on the front page when it has the page filter set to php with code always returning FALSE.");
+    $this->assertFalse(fusion_apply_rule_is_visible($rule->rid, 'node/' . $article->nid), "The rule is not visible for an article node when it has the page filter set to php with code always returning FALSE.");
+
+    $rule->pages = "<?php\nreturn TRUE;\n?>";
+    fusion_apply_rule_save($rule);
+
+    $this->assertTrue(fusion_apply_rule_is_visible($rule->rid), "The rule is visible on the front page when it has the page filter set to php with code always returning TRUE.");
+    $this->assertTrue(fusion_apply_rule_is_visible($rule->rid, 'node/' . $article->nid), "The rule is visible for an article node when it has the page filter set to php with code always returning TRUE.");
+  }
+}

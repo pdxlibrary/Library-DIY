@@ -1,0 +1,330 @@
+.page {
+  background: none;
+}
+
+.header-group-wrapper {
+  background: none;
+}
+
+.header tbody {
+  border-top: none;
+}
+
+div#header-group div#site-name a {
+  color: white;
+}
+
+div#main {
+  padding-left: 10px;
+}
+
+div#content-group {
+  background-color: #e2e5ea;
+  height: 100%;
+}
+
+div#content {
+  text-align: left;
+}
+
+/* @group Breadcrumbs */
+
+div#breadcrumbs {
+  margin: 0;
+  text-align: left;
+  background-color: white;
+  color: black;
+  border-bottom: 1px solid #bbbbbb;
+}
+
+div#breadcrumbs div.breadcrumb {
+  padding: 5px 0 8px 30px;
+}
+
+div#breadcrumbs a {
+}
+
+/* @end */
+
+/* @group Sidebar Backgrounds */
+/* set sidebar color based on node type */
+
+body.node-type-diy-guide div#main-inner, body.node-type-guide-categories div#main-inner {
+  background-color: #00759A;
+}
+
+body.front div#main-inner {
+  background-color: #e2e5ea;
+}
+
+/* @end */
+
+/* @group Sidebar Titles */
+
+/* Category Pages */
+
+#block-views-sidebar_node_title-block_2 div.gutter{
+  margin: 55px 50px 0;
+}
+
+#block-views-sidebar_node_title-block_2 h1 {
+  color: white;
+  font-family: Verdana;
+  text-align: center;
+  line-height: 130%;
+  font-size: 220%;
+  font-weight: bold;
+  border-bottom: 1px solid white;
+  padding-bottom: 23px;
+}
+
+/* DIY Guide Pages */
+
+#block-views-sidebar_node_title-block div.gutter {
+  margin: 34px 20px 20px;
+}
+
+#block-views-sidebar_node_title-block h1 {
+  color: white;
+  font-family: Verdana;
+  font-weight: bold;
+  text-align: center;
+  line-height: 120%;
+  border-bottom: 1px solid white;
+  padding-bottom: 15px;
+  font-size: 150%;
+}
+
+#block-views-related_diys-block div.gutter {
+  margin: 0 20px;
+}
+
+#block-views-related_diys-block h2.title.block-title {
+  text-align: center;
+  color: white;
+  font-family: Arial;
+  border-bottom: 1px solid white;
+  margin-bottom: 20px;
+}
+
+/* Front Page */
+
+#block-views-sidebar_node_title-block_1 div.gutter {
+  margin: 55px 60px 0;
+}
+
+#block-views-sidebar_subtitle-block {
+  /* margin-bottom: 100px; */
+}
+
+#block-views-sidebar_subtitle-block div.views-field.views-field-field-subtitle {
+  text-align: center;
+  font-family: Arial;
+  font-size: 150%;
+  line-height: 130%;
+  color: gray;
+}
+
+#block-views-sidebar_subtitle-block  div.views-field.views-field-field-subtitle strong {
+  font-size: 140%;
+}
+
+#block-views-sidebar_node_title-block_1 {
+  margin: 0;  
+}
+
+#block-views-sidebar_node_title-block_1 h1 {
+  text-align: center;
+  font-family: Arial, Helvetica;
+  font-size: 250%;
+  text-transform: uppercase;
+  line-height: 120%;
+  font-weight: bold;
+  border-bottom: 1px solid #bbbbbb;
+  padding-bottom: 20px;
+  margin-bottom: 20px;
+}
+
+/* @end */
+
+/* @group Front Page */
+
+div#block-views-front_page_categories-block div.views-field-field-list-title a {
+  background: white url(../i/nav-arrow.png) no-repeat 95% 92%;
+  color: gray;
+  font-size: 120%;
+  width: 130px;
+  padding: 20px;
+  margin: 15px 5px;
+  max-height: 80px;
+  min-height: 80px;
+  display: block;
+  border-top: 4px solid #6a7f10;
+  border-collapse: separate;
+  box-shadow: 4px 4px 6px gray;
+  border-bottom-right-radius: 15px;
+  text-decoration: none;
+}
+
+div#block-views-front_page_categories-block div.views-field-field-list-title a strong {
+  color: #00759a;
+}
+
+body.front #block-system-main div.gutter.inner.clearfix {
+  padding: 0;
+}
+
+body.front #block-system-main {
+  margin: 0;
+}
+
+body.front div#block-system-main {
+  display: none;
+}
+
+body.front div#block-views-front_page_categories-block {
+  margin: 25px 0;
+  padding: 10px 0;
+  border-left: 1px solid #bbbbbb;
+}
+
+body.front div#block-views-add_new_category-block {
+  text-align: right;
+}
+
+/* @end */
+
+/* @group Categories */
+
+#block-views-diy_guide_list-block div.views-field-field-list-title a {
+  background: white url(../i/nav-arrow.png) no-repeat 95% 92%;
+  color: gray;
+  font-size: 120%;
+  width: 130px;
+  padding: 20px;
+  margin: 15px 5px;
+  max-height: 80px;
+  min-height: 80px;
+  display: block;
+  border-top: 4px solid #6a7f10;
+  border-collapse: separate;
+  box-shadow: 4px 4px 6px gray;
+  border-bottom-right-radius: 15px;
+  text-decoration: none;
+}
+
+#block-views-diy_guide_list-block div.views-field-field-list-title a strong {
+  color: #00759a;
+}
+
+body.node-type-guide-categories #block-system-main div.gutter.inner.clearfix {
+  padding: 0;
+}
+
+body.node-type-guide-categories #block-system-main {
+  margin: 0;
+}
+
+body.node-type-guide-categories div#block-system-main {
+  display: none;
+}
+
+body.node-type-guide-categories div#block-views-diy_guide_list-block {
+  margin: 25px 0;
+  padding: 10px 0;
+}
+
+div#block-views-add_new_diy_guide-block {
+  text-align: right;
+}
+
+body.node-type-guide-categories div#content {
+  min-height: 378px;
+}
+
+/* @end */
+
+/* @group DIY Guides */
+
+#block-system-main div.gutter.inner.clearfix {
+  margin: 0 15px;
+  padding: 20px;
+}
+
+body.node-type-diy-guide #block-system-main div.gutter.inner.clearfix {
+  background-color: white;
+  border-top: 4px solid #00759a;
+  box-shadow: 4px 4px 6px #999999;
+  border-bottom-right-radius: 20px;
+}
+
+body.node-type-diy-guide div#content-region {
+  margin-top: 10px;
+}
+
+body.node-type-diy-guide div.field.field-name-field-guide-body h2 {
+  font-family: Verdana;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+
+body.node-type-diy-guide div.field.field-name-field-guide-body {
+  font-family: arial;
+  color: black;
+}
+
+body.node-type-diy-guide div.field.field-name-field-guide-body p {
+  margin-bottom: 20px;
+}
+
+body.node-type-diy-guide div.field.field-name-field-guide-body table thead tr td {
+  background-color: #6a7f10;
+  font-weight: bold;
+  color: white;
+  padding: 10px;
+}
+
+body.node-type-diy-guide div.field.field-name-field-guide-body table tr td {
+  padding: 10px;
+  border: 1px solid black;
+}
+
+body.node-type-diy-guide div.field.field-name-field-guide-body table td {
+  font-family: Arial;
+}
+
+body.node-type-diy-guide div.field.field-name-field-guide-body table {
+  margin-bottom: 20px;
+}
+
+#block-views-related_diys-block div.views-field-field-guide-title a {
+  background: white url(../i/nav-arrow-small.png) no-repeat 93% 90%;
+  color: gray;
+  font-size: 100%;
+  width: 105px;
+  padding: 15px;
+  margin: 15px 5px;
+  max-height: 70px;
+  min-height: 70px;
+  display: block;
+  border-top: 4px solid #6a7f10;
+  box-shadow: 4px 4px 9px black;
+  border-bottom-right-radius: 15px;
+  line-height: 120%;
+  text-decoration: none;
+}
+
+#block-views-related_diys-block div.views-field-field-guide-title a strong {
+  color: #00759a;
+}
+
+#block-views-related_diys-block div.view-display-id-attachment_1 div.views-field-nid a {
+  color: white;
+  font-size: 85%;
+}
+
+div#block-views-related_diys-block {
+  text-align: left;
+}
+
+/* @end */

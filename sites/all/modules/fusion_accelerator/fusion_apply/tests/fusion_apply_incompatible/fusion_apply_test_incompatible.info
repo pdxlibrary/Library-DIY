@@ -1,0 +1,13 @@
+name = Fusion Apply Incompatible Testing
+description = A test module used for testing incompatible Fusion Apply API implementations.
+package = Testing
+core = 7.x
+hidden = TRUE
+dependencies[] = fusion_apply
+
+; Information added by drupal.org packaging script on 2012-03-23
+version = "7.x-2.0-beta1"
+core = "7.x"
+project = "fusion_accelerator"
+datestamp = "1332518152"
+

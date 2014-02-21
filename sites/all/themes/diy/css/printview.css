@@ -1,0 +1,6 @@
+div.header {display:none;}
+#no_print {display:none;}
+body {background:none; background-color:#FFF;}
+div.footerBox {display:none;}
+div.print_header {display:block;}
+div.print_footer {display:block; text-align:center;}

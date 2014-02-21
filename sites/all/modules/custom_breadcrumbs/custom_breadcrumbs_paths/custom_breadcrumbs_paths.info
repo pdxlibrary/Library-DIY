@@ -1,0 +1,19 @@
+name = Custom breadcrumbs for paths
+package = Custom breadcrumbs
+dependencies[] = custom_breadcrumbs
+description = Provides custom breadcrumbs for specific paths.
+core = 7.x
+configure = admin/config/user-interface/custom-breadcrumbs
+
+
+
+
+files[] = custom_breadcrumbs_paths.install
+files[] = custom_breadcrumbs_paths.module
+
+; Information added by drupal.org packaging script on 2012-11-25
+version = "7.x-2.0-alpha3"
+core = "7.x"
+project = "custom_breadcrumbs"
+datestamp = "1353872502"
+

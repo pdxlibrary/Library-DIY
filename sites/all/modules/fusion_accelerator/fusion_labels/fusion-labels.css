@@ -1,0 +1,106 @@
+/* Label for currently selected grid.
+-------------------------------------------------------------- */
+
+.debug-responsive {
+  display: none;
+  font-size: .8em;
+  position: absolute;
+  right: 5px;
+  top: 85px;
+}
+
+/* Grid overlay.
+-------------------------------------------------------------- */
+
+#grid-mask-overlay {
+  display: none;
+  left: 0;
+  position: absolute;
+  top: 0;
+  width: 100%;
+  z-index: 997;
+}
+
+/* grid mask overlay opacity fix for IE6 & IE7 */
+.ie6 #grid-mask-overlay,
+.ie7 #grid-mask-overlay {
+  filter: progid:DXImageTransform.Microsoft.Alpha(Opacity=75);
+}
+
+/* grid mask overlay opacity fix for IE8 */
+.ie8 #grid-mask-overlay {
+  -ms-filter: "progid:DXImageTransform.Microsoft.Alpha(Opacity=75)";
+}
+
+#grid-mask-overlay .region {
+  margin: 0 auto;
+}
+#grid-mask-overlay .block {
+  background-image: url('images/pattern-dots.png');
+}
+.grid-mask-overlay .block .gutter {
+  background-color: rgba(255,118,0,.15);
+  outline: none;
+}
+.grid-mask #grid-mask-overlay {
+  display: block;
+}
+.grid-mask .block .inner {
+  outline: #f00 dashed 2px;
+}
+#grid-mask-toggle {
+  right: 0;
+  top: 35px;
+}
+
+#fusion-label-toggle,
+#grid-mask-toggle {
+  background-color: #000;
+  border: 1px outset #fff;
+  color: #fff;
+  cursor: pointer;
+  font-family: Arial, sans-serif;
+  font-size: 10px;
+  font-weight: normal;  
+  line-height: 200%;
+  padding: 0 5px 0 5px;
+  position: absolute;
+  text-align: center;
+  text-transform: uppercase;
+  z-index: 998;
+  -moz-border-radius: 5px;  
+  -webkit-border-radius: 5px;  
+}
+#fusion-label-toggle.grid-on,
+#grid-mask-toggle.grid-on {
+  border-style: inset;
+  background-color: #FFDADA;
+  color: black;
+  font-weight: bold;
+}
+
+/* Region labels.
+-------------------------------------------------------------- */
+
+#fusion-label-toggle {
+  right: 0;
+  top: 60px;
+}
+div.block-fusion-labels {
+  display: none;
+}
+
+#block-fusion_labels-fusion_region_label .inner {
+  padding: 5px;
+  background-color: rgba(0,0,0,.05);
+  border: solid 1px #eee;
+  height: auto !important;
+}
+#block-fusion_labels-fusion_region_label h2 {
+  color: #666;
+  font-size: 1em;
+  margin: 0;
+}
+#block-fusion_labels-fusion_region_label .inner {
+  outline: 0;
+}

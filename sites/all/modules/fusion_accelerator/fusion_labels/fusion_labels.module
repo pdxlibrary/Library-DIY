@@ -1,0 +1,133 @@
+<?php
+
+/**
+ * Implements hook_permission().
+ */
+function fusion_labels_permission() {
+  return array(
+    'administer fusion labels' =>  array(
+      'title' => t('Toggle grid overlay and labels'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_block_info().
+ */
+function fusion_labels_block_info() {
+  $blocks['fusion_region_label'] = array(
+    'info' => t('Fusion Region Labels'),
+    'cache' => DRUPAL_NO_CACHE,
+    'weight' => -400,
+    );
+  return $blocks;
+}
+
+/**
+ * Implements hook_block_view().
+ */
+function fusion_labels_block_view($delta = '') {
+  $block = array();
+  switch ($delta) {
+    case 'fusion_region_label':
+      // this will be added later using hook_page_build(), to label the region where it exists
+      $block = array(
+        'subject' => '',
+        'content' => t('This block is for debugging.'),
+        );
+      break;
+  }
+  return $block;
+}
+
+/**
+ * Implements hook_page_build().
+ */
+function fusion_labels_page_build(&$page) {
+
+  // only add region labels if the fusion "theme_grid" setting is set to true.
+  if (!theme_get_setting('theme_grid')) return;
+  
+  // check for permission.
+  if (!user_access('administer fusion labels')) return false;
+  
+  $current_theme = $GLOBALS['theme_key'];
+  $regions = system_region_list($current_theme);
+  foreach ($regions as $region => $region_label) {
+    
+    if ($region == "help") continue;
+    
+    // combine block's data from db with what is provided with hook_block_view().
+    $debug_block_view = module_invoke('fusion_labels', 'block_view', 'fusion_region_label');
+    $debug_block_data = block_load('fusion_labels', 'fusion_region_label');
+    $debug_block = (object) array_merge((array) $debug_block_data, (array) $debug_block_view);    
+    $debug_block->subject = $region_label;
+    
+    $render_array = array( 
+      '#block' => $debug_block,
+      '#theme_wrappers' => array('block'),
+      '#weight' => -400,
+      );
+
+    if (isset($page[$region])) {
+      // add block to all regions currently in use.
+      // weight doesn't seem to be respected.  append to front of the array for now.
+      array_unshift($page[$region], $render_array);
+    } else {
+      $page[$region]['fusion_region_label'] = $render_array;
+    }
+  }
+  
+  // add a toggle.  requires page bottom region.
+  if (isset($page['page_bottom'])) {
+    $page['page_bottom']['fusion_label_toggle'] = array(
+      '#type' => "markup",
+      '#markup' => "<div id='fusion-label-toggle'>Labels</div>",
+      '#attached' => array(
+        'css' => array(drupal_get_path('module', 'fusion_labels') . '/fusion-labels.css'),
+      ),
+    );
+    
+    // Prints currently selected grid in upper right hand corner, below grid and label buttons.
+    $responsive_displays = theme_get_setting('responsive_displays');
+    if (is_array($responsive_displays)) {
+      $markup = '';
+      foreach ($responsive_displays as $responsive_display) {
+        $width = theme_get_setting($responsive_display . '_grid_width');
+        $markup .= "<div id='label_{$responsive_display}' class='debug-responsive'>{$width}</div>" . "\n";
+      }
+      $page['page_bottom']['fusion_grid_label'] = array(
+        '#type' => "markup",
+        '#markup' => $markup,
+      );
+    }
+    drupal_add_js(drupal_get_path('module', 'fusion_labels') . '/fusion_labels.js');
+  }
+}
+
+/**
+ * Implements hook_form_system_theme_settings_alter().
+ */
+function fusion_labels_form_system_theme_settings_alter(&$form, &$form_state) {
+  
+  //skip these changes on the global settings page
+  if(empty($form_state['build_info']['args'])){
+    return;
+  } 
+  // only add option to fusion themes.
+  $theme_name = $form_state['build_info']['args'][0];
+  $theme_list = list_themes();
+  // Only add these options to Fusion themes.
+  if (!_fusion_accelerator_fusion_based($theme_list, $theme_name)) {
+    return;
+  }
+
+  $form['tnt_container']['general_settings']['theme_grid_config']['grid_mask'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Enable grid overlay mask for administrators.'),
+    '#default_value' => theme_get_setting('grid_mask', $theme_name),
+    '#description' => t('Adds "GRID" button in the upper right corner to toggle a grid overlay and block outlines, which can help with visualizing page layout and block positioning.'),
+    '#weight' => 20,
+  );
+
+}

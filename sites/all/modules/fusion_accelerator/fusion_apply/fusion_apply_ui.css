@@ -1,0 +1,9 @@
+.form-disabled { 
+  opacity: .7;
+  color: #999;
+}
+.vertical-tabs-panes .fieldset-description {
+  padding-bottom: 1em;
+  border-bottom: dashed 1px #666;
+  margin-bottom: 1em;
+}

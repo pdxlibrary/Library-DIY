@@ -1,0 +1,121 @@
+This theme was originally created by Emma Hogbin for the Responsive Web Design for Drupal workshop (www.responsivewebdesignguild.com). It is a sub-theme of Fusion (http://drupal.org/project/fusion).
+
+--- Fusion Accelerator
+    Download Fusion Accelerator (make sure you get the 2.x DEV release) from http://drupal.org/project/fusion_accelerator
+    Unpack the module and place it into sites/all/modules on your Drupal installation directory.
+    Log in to Drupal as the administrator and enable the modules:
+        Apply skins
+        Apply skins for pages and regions
+        Apply skins UI
+        Fusion grid tools
+        Fusion labels
+
+    Leave the module Responsive layouts for IE6-8 DISABLED for now (it will give you error messages unless you have CSS caching turned on, which you don't want to do while you're developing your site's CSS...don't ask me how long it took me to remember this was the reason I kept having to dump Drupal's cache to see my changes).
+
+--- Add the starter Fusion theme to your site
+Download the following theme: Fusion from http://drupal.org/project/fusion
+Be sure you get the 2.x DEV release. This is not the recommended release, but it is the release you want.
+    Unpack the file you downloaded previously and place the folder into sites/all/themes on your Drupal installation directory.
+
+Your setup should look like this:
+    sites/all/modules/fusion_accelerator
+    sites/all/themes/fusion
+    sites/responsivewebdesignguild.com/themes/alloy
+
+Alloy is now ready for use.
+
+    Log into your Drupal site as the site administrator and enable the new subtheme.
+    Navigate to Administration > Appearance.
+    Scroll to the bottom of the screen and locate Alloy.
+    Click "Enable and set as default". (Note: you do not need to enable Fusion itself.)
+    Close the overlay.
+
+Alloy will be applied to your site. 
+
+Over on the right hand side there are two helper buttons labeled "GRID" and "LABELS". Clicking either of those labels will turn on region names and the grid underlay. You cannot navigate your site with these enabled. So look around and then disable the helper info by clicking the buttons again to disable them.
+
+Troubleshooting:
+If you cannot see these labels:
+
+    Make sure you downloaded the 2.x DEV branch for both Fusion Accelerator and Fusion.
+    Make sure you have enabled the following submodules:
+        Fusion grid tools
+        Fusion labels
+    If you are not logged in as user/1, make sure your account has sufficient permissions to view the toggles. Administration > People > Permissions > Fusion labels. (and make sure your account has the role which has permission to use the toggles.)
+
+Add content to your site to expose each region.
+
+    Create a custom block, or place an existing "dummy" block into each of the following regions for your subtheme:
+        Preface
+        Content x 2 (these will be the nested columns below the main content area)
+        Sidebar first
+        Postscript bottom
+        Footer
+
+--- Install and configure Superfish
+    Download Superfish (the stable release is fine) from http://drupal.org/project/superfish
+    Download Libraries (the stable release is fine) from http://drupal.org/project/libraries
+    Unpack Superfish and Libraries modules and place them into sites/all/modules on your Drupal installation directory.
+    Log in to Drupal as the administrator and enable the modules Superfish and Libraries.
+    Once the Superfish module is enabled, click the configuration cog from the modules page, or navigate to Configuration > User interface > Superfish. You should get an error message saying the library is missing.
+
+-- Install the Superfish JS library
+        On your Drupal server, create the directory sites/all/libraries. Make sure this folder is set to read-write-execute by the Web server. Usually setting "read-write-execute" for "owner" and "group" is sufficient. From the command line, it's chmod 775 libraries.
+        Download the superfish library from http://dl.dropbox.com/u/22795799/superfish-library-for-drupal-v1.1.zip. This is version 1.1. Check the superfish project page to see if there is a more up-to-date version of the library. No, the module version and the library version are not in sync. So at the time of writing you would be using Superfish the module version 1.8 and superfish the JS library version 1.1.
+        Unzip the library and put this superfish library into the folder sites/all/libraries. The folder sites/all/libraries/superfish will now contain a bunch of JS files and directories css, images and style.
+    Refresh the admin configuration screen. If you had an error message before, it should now be gone.
+    On the Superfish configuration screen change the number of blocks from 4 to 1. (Of course, if you're working with a custom design that has more places where navigation goes, set this to whatever number of nav blocks that you need.
+    Navigate to the blocks administration screen (Administration > Structure > Blocks).
+    Locate the block Superfish 1 (Superfish). It will be listed at the bottom of the page under "Disabled". Next to the Superfish 1 block, click configure.
+    Configure the Superfish 1 block as follows:
+        Block title: <none>. Make sure you include the angle brackets.
+        Menu name: Main menu
+        Menu Parent: Main menu
+        All remaining settings can be left as the default options. However, you may want to play around with the settings in Superfish Plugins at some point. There is some beta stuff for touchscreen-specific compatibility.
+    Scroll to the bottom of the configuration screen and click Save block.
+
+
+--- Applying Skins
+You can edit your skins contextually with the following method:
+
+    Navigate to the home page of your site. Hover over one of the blocks on the page and locate the cog icon (it will appear at the top right of the item you are hovering over).
+    Click on the cog icon.
+    From the drop down menu click "edit skins."
+
+You can edit your skins from the block configuration screen as well:
+
+    Navigate to Administration > Structure > Blocks.
+    Beside the block you want to configure, click "edit skins".
+
+Apply skins as are relevant for your design. Here is a summary of the changes I made for the alloy theme:
+
+    Blocks in the footer use the green list skin.
+    Some blocks in the Sidebar first region uses the white + shadow skin, others are unstyled and inherit the background colour from the main page.
+    The two blocks below the content were adjusted in width to be 3 grid columns wide each. They now float beside each other and linearize for mobile display.
+
+--- Enable IE Support
+Fusion Accelerator provides support for older browsers with the polyfill css3-mediaqueries.js. You will need to enable the module and download the JS library. This polyfill does NOT work on @imported style sheets. Drupal uses this format by default unless CSS caching is turned on. To fully enable this module you will also need to turn on caching. Because of this, we leave it to the very end when, hopefully, you are no longer editing your CSS files.
+Task: 
+
+Enable JS library support. You do not need to complete this sequence of steps if you have already installed the superfish module.
+
+    Download Libraries (the stable release is fine).
+    Unpack the Libraries module and place it into sites/all/modules on your Drupal installation directory.
+    On your Drupal server, create the directory sites/all/libraries. Make sure this folder is set to read-write-execute by the Web server. Usually setting "read-write-execute" for "owner" and "group" is sufficient. From the command line, it's chmod 775 libraries.
+    Log in to Drupal as the administrator and enable the module Libraries.
+
+Install Fusion Accelerator's helper module: Responsive layouts for IE 6-8
+
+    Within the folder sites/all/libraries create a new folder named css3-mediaqueries.
+    Download the css3-mediaqueries.js library from http://css3-mediaqueries-js.googlecode.com/files/css3-mediaqueries.js. At the time this was written, css3-mediaqueries.js was not versioned. Check the Fusion Accelerator project page to see if there is a more up-to-date version of the library, or any special install notes you should be aware of.
+    Place the downloaded JS file into the folder sites/all/libraries/css3-mediaqueries.
+
+Enable CSS caching for your site
+
+    Log into your Drupal site as the administrator.
+    Navigate to Administration > Configuration > Performance
+    Locate the heading Bandwidth optimization. It appears near the end of the configuration screen.
+    Enable the option "Aggregate and compress CSS files".
+    Click the button "Save configuration".
+
+Your site should now be responsive for older versions of IE.

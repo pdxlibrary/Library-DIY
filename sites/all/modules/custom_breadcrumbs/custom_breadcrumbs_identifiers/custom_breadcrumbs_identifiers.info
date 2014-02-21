@@ -1,0 +1,15 @@
+name = Custom breadcrumbs identifiers
+package = Custom breadcrumbs
+description = Provides special identifiers for custom breadcrumbs.
+dependencies[] = custom_breadcrumbs
+core = 7.x
+configure = admin/config/user-interface/custom-breadcrumbs
+
+files[] = custom_breadcrumbs_identifiers.module
+
+; Information added by drupal.org packaging script on 2012-11-25
+version = "7.x-2.0-alpha3"
+core = "7.x"
+project = "custom_breadcrumbs"
+datestamp = "1353872502"
+

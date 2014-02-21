@@ -1,0 +1,220 @@
+<?php
+
+/**
+ * @file
+ * Install file for the custom_breadcrumbs_taxonomy module.
+ */
+
+/**
+ * Implements hook_install().
+ */
+function custom_breadcrumbs_taxonomy_install() {
+  // If taxonomy_breadcrumbs is installed, copy term and vocab breadcrumb to custom_breadcrumbs_taxonomy tables.
+  if (module_exists('taxonomy_breadcrumb')) {
+    // Search for taxonomy_breadcrumb term and vocabulary breadcrumbs and copy to new custom_breadcrumb_taxonomy tables.
+    drupal_set_message('Taxonomy breadcrumb module is enabled. Copying breadcrumbs from {taxonomy_breadcrumb_term} and {taxonomy_breadcrumb_vocabulary} to custom_breadcrumbs_taxonomy ...');
+    $result = db_query("SELECT * FROM {taxonomy_breadcrumb_term}");
+    $found = 0;
+    foreach ($result as $breadcrumb) {
+      $id = db_insert('custom_breadcrumbs_taxonomy_term')
+        ->fields(array(
+          'paths' => $breadcrumb->path,
+          'tid' => $breadcrumb->tid,
+          'visibility_php' => '',
+          ))
+        ->execute();
+      ++$found;
+    }
+    $result = db_query("SELECT * FROM {taxonomy_breadcrumb_vocabulary}");
+
+    foreach ($result as $breadcrumb) {
+      $id = db_insert('custom_breadcrumbs_taxonomy_vocabulary')
+        ->fields(array(
+          'paths' => $breadcrumb->path,
+          'vid' => $breadcrumb->vid,
+          'visibility_php' => '',
+          ))
+        ->execute();
+      ++$found;
+    }
+
+    // use variable definitions already set for taxonomy_breadcrumb
+    variable_set('custom_breadcrumbs_taxonomy_home', variable_get('taxonomy_breadcrumb_home', t('Home')));
+    variable_set('custom_breadcrumbs_taxonomy_show_current_term', variable_get('taxonomy_breadcrumb_show_current_term', TRUE));
+    variable_set('custom_breadcrumbs_taxonomy_include_node_title', variable_get('taxonomy_breadcrumb_include_node_title', FALSE));
+    variable_set('custom_breadcrumbs_taxonomy_include_nodes', variable_get('taxonomy_breadcrumb_include_nodes', FALSE));
+    variable_set('custom_breadcrumbs_taxonomy_node_types', variable_get('taxonomy_breadcrumb_node_types', TAXONOMY_BREADCRUMB_NODE_TYPES_DEFAULT));
+    define('CUSTOM_BREADCRUMBS_TAXONOMY_NODE_TYPES_DEFAULT', TAXONOMY_BREADCRUMB_NODE_TYPES_DEFAULT);
+
+    // Set custom_breadcrumbs_taxonomy to use taxonomy hierarchy in constructing breadcrumb.
+    variable_set('custom_breadcrumbs_taxonomy_use_hierarchy', TRUE);
+
+    if ($found > 0) {
+      drupal_set_message(format_plural($found, 'Copied 1 breadcrumb.', 'Copied @count breadcrumbs.'));
+      drupal_set_message(t('You can now disable taxonomy_breadcrumb, and test custom_breadcrumb_taxonomy.'));
+    }
+    else {
+      drupal_set_message(t('No taxonomy_breadcrumbs were found'));
+    }
+  }
+  drupal_set_message('Custom Breadcrumbs for Taxonomy Terms and Vocabularies: Taxonomy based breadcrumbs should now appear on node pages and taxonomy/term pages.  For the most common applications this module will work "out of the box" and no further configuration is necessary.  If customization is desired settings can be changed on the ' . l('administration page', 'admin/config/user-interface/custom-breadcrumbs') . '.');
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function custom_breadcrumbs_taxonomy_uninstall() {
+  // Remove persistent variables.
+  variable_del('custom_breadcrumbs_taxonomy_use_hierarchy');
+  variable_del('custom_breadcrumbs_taxonomy_append_breadcrumb');
+  variable_del('custom_breadcrumbs_taxonomy_show_vocabulary');
+  variable_del('custom_breadcrumbs_taxonomy_show_current_term');
+  variable_del('custom_breadcrumbs_taxonomy_show_current_term_term');
+  variable_del('custom_breadcrumbs_taxonomy_include_node_title');
+  variable_del('custom_breadcrumbs_taxonomy_include_nodes');
+  variable_del('custom_breadcrumbs_taxonomy_node_types');
+  variable_del('custom_breadcrumbs_taxonomy_views');
+  variable_del('custom_breadcrumbs_taxonomy_result_nodes');
+}
+
+/**
+ * Implements hook_schema().
+ */
+function custom_breadcrumbs_taxonomy_schema() {
+  $schema['custom_breadcrumbs_taxonomy_term'] = array(
+    'description' => 'Stores custom breadcrumbs for taxonomy terms',
+    'fields' => array(
+      'bid' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'Unique identifier for the {custom_breadcrumbs_taxonomy} breadcrumbs.',
+      ),
+      'name' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => FALSE,
+        'description' => 'An optional name for the custom breadcrumb.',
+      ),
+      'titles' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'A title for the breadcrumb link.',
+      ),
+      'paths' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+        'description' => 'A path for the breadcrumb link.',
+      ),
+      'tid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'The taxonomy term id for this breadcrumb.',
+      ),
+      'visibility_php' => array(
+        'type' => 'text',
+        'not null' => TRUE,
+        'size' => 'medium',
+        'description' => 'An optional PHP snippet to control the {custom_breadcrumbs_views} visibility.',
+      ),
+      'language' => array(
+        'type' => 'varchar',
+        'length' => 12,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The language this breadcrumb is for; if blank, the breadcrumb will be used for unknown languages.',
+      ),
+    ),
+    'indexes' => array(
+      'language' => array('language'),
+      'tid_language' => array('tid', 'language'),
+    ),
+    'primary key' => array('bid'),
+  );
+
+  $schema['custom_breadcrumbs_taxonomy_vocabulary'] = array(
+    'description' => 'Stores custom breadcrumbs for taxonomy vocabularies',
+    'fields' => array(
+      'bid' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'Unique identifier for the {custom_breadcrumbs_taxonomy} breadcrumbs.',
+      ),
+      'name' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => FALSE,
+        'description' => 'An optional name for the custom breadcrumb.',
+      ),
+      'titles' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'A titles for the breadcrumb link.',
+      ),
+      'paths' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+        'description' => 'A paths for the breadcrumb link.',
+      ),
+      'vid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'The taxonomy vocabulary id for this breadcrumb.',
+      ),
+      'visibility_php' => array(
+        'type' => 'text',
+        'not null' => TRUE,
+        'size' => 'medium',
+        'description' => 'An optional PHP snippet to control the {custom_breadcrumbs_views} visibility.',
+      ),
+      'language' => array(
+        'type' => 'varchar',
+        'length' => 12,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The language this breadcrumb is for; if blank, the breadcrumb will be used for unknown languages.',
+      ),
+    ),
+    'indexes' => array(
+      'language' => array('language'),
+      'vid_language' => array('vid', 'language'),
+    ),
+    'primary key' => array('bid'),
+  );
+
+  return $schema;
+}
+
+/**
+ * Sets weight of custom_breadcrumbs_taxonomy to be greater than taxonomy, views, and custom_breadcrumbs.
+ */
+function custom_breadcrumbs_taxonomy_update_6000() {
+  $tax_weight = (int) db_query("SELECT weight FROM {system} WHERE name = :name", array(':name' => 'taxonomy'))->fetchField();
+  $views_weight = (int) db_query("SELECT weight FROM {system} WHERE name = :name", array(':name' => 'views'))->fetchField();
+  $cb_weight = (int) db_query("SELECT weight FROM {system} WHERE name = :name", array(':name' => 'custom_breadcrumbs'))->fetchField();
+  $cb_tax_weight = max($tax_weight, $views_weight, $cb_weight) + 2;
+  db_update('system')
+    ->fields(array('weight' => $cb_tax_weight))
+    ->condition('type', 'module')
+    ->condition('name', 'custom_breadcrumbs_taxonomy')
+    ->execute();
+  return t('Adjusted the custom_ breadcrumbs_taxonomy module weight to be greater than custom_breadcrumbs, taxonomy and views.');
+}
+
+/**
+ * Adds name fields to custom breadcrumbs taxonomy tables for improved organization of custom breadcrumbs.
+ */
+function custom_breadcrumbs_taxonomy_update_6200() {
+  db_add_field('custom_breadcrumbs_taxonomy_term', 'name', array('type' => 'varchar', 'length' => 128, 'NOT NULL' => FALSE, 'description' => 'An optional name for the custom breadcrumb.'));
+  db_add_field('custom_breadcrumbs_taxonomy_vocabulary', 'name', array('type' => 'varchar', 'length' => 128, 'NOT NULL' => FALSE, 'description' => 'An optional name for the custom breadcrumb.'));
+  return t('Added name fields to custom breadcrumbs taxonomy tables for improved organization of custom breadcrumbs.');
+}

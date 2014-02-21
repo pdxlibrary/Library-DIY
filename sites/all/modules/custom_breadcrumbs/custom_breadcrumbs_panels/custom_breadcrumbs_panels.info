@@ -1,0 +1,19 @@
+name = Custom breadcrumbs for panels
+package = Custom breadcrumbs
+dependencies[] = custom_breadcrumbs
+dependencies[] = panels
+dependencies[] = ctools
+dependencies[] = page_manager
+description = Provides custom breadcrumbs for panels pages.
+core = 7.x
+configure = admin/config/user-interface/custom-breadcrumbs
+
+files[] = custom_breadcrumbs_panels.install
+files[] = custom_breadcrumbs_panels.module
+
+; Information added by drupal.org packaging script on 2012-11-25
+version = "7.x-2.0-alpha3"
+core = "7.x"
+project = "custom_breadcrumbs"
+datestamp = "1353872502"
+

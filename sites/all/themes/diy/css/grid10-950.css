@@ -1,0 +1,46 @@
+
+/* Layout - 10 column grid, 950px fixed width, 20px gutters
+-------------------------------------------------------------- */
+
+/* grid widths */
+.grid10-1 {width: 95px;}
+.grid10-2 {width: 190px;}
+.grid10-3 {width: 285px;}
+.grid10-4 {width: 380px;}
+.grid10-5 {width: 475px;}
+.grid10-6 {width: 570px;}
+.grid10-7 {width: 665px;}
+.grid10-8 {width: 760px;}
+.grid10-9 {width: 855px;}
+.grid10-10 {width: 950px;}
+
+/* block indents */
+.grid10-indent-1 {margin-left: 95px;}
+.grid10-indent-2 {margin-left: 190px;}
+.grid10-indent-3 {margin-left: 285px;}
+.grid10-indent-4 {margin-left: 380px;}
+.grid10-indent-5 {margin-left: 475px;}
+.grid10-indent-6 {margin-left: 570px;}
+.grid10-indent-7 {margin-left: 665px;}
+.grid10-indent-8 {margin-left: 760px;}
+.grid10-indent-9 {margin-left: 855px;}
+
+/* gutters (2 x margin) */
+.gutter {
+  margin-left: 10px;
+  margin-right: 10px;
+}
+
+body,
+div.full-width {
+  min-width: 950px;
+}
+
+#grid-mask-overlay .block .gutter {
+  background-color: rgba(0,204,0,.15);
+  outline: none;
+}
+
+body.grid-mask-enabled #grid-950 {
+  display: block;
+}

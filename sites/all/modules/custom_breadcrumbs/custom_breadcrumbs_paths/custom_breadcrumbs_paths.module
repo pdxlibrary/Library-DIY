@@ -1,0 +1,310 @@
+<?php
+
+/**
+ * @file
+ * Assign custom breadcrumbs based on the Drupal path.
+ */
+module_load_include('inc', 'custom_breadcrumbs', 'custom_breadcrumbs.admin');
+module_load_include('inc', 'custom_breadcrumbs', 'custom_breadcrumbs_common');
+
+/**
+ * Implements hook_cb_breadcrumb_info().
+ *
+ * @return an array with elements:
+ *   'table' indicating the db_table to load the breadcrumb from,
+ *   'field' a unique field of the database table used to identify the breadcrumb,
+ *   'type' a string used for indicating the breadcrumb type on the admin list,
+ *   'name_constructor' a function which generates the breadcrumb name from the breadcrumb.
+ */
+function custom_breadcrumbs_paths_cb_breadcrumb_info() {
+  $breadcrumb_type_info = array();
+  $breadcrumb_type_info['paths'] = array(
+    'table' => 'custom_breadcrumbs_paths',
+    'field' => 'specific_path',
+    'type' => 'path',
+    'name_constructor' => '_custom_breadcrumbs_paths_breadcrumb_name',
+  );
+  return $breadcrumb_type_info;
+}
+
+/**
+ * Constructs a default name to display in the admin screen.
+ *
+ * @param $breadcrumb
+ *   The breadcrumb object.
+ *
+ * @return
+ *   A text string that will be used as the breadcrumb name.
+ */
+function _custom_breadcrumbs_paths_breadcrumb_name($breadcrumb) {
+  if (isset($breadcrumb->specific_path)) {
+    return $breadcrumb->specific_path;
+  }
+}
+
+/**
+ * Implements hook_menu().
+ */
+function custom_breadcrumbs_paths_menu() {
+  $items = array();
+  $items['admin/structure/custom_breadcrumbs/path/add'] = array(
+    'title' => 'Path',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('custom_breadcrumbs_paths_form', 'path'),
+    'access arguments' => array('administer custom breadcrumbs'),
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 5,
+  );
+  $items['admin/structure/custom_breadcrumbs/path/edit'] = array(
+    'title' => 'Edit custom breadcrumb for path',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('custom_breadcrumbs_paths_form', 'path'),
+    'access arguments' => array('administer custom breadcrumbs'),
+    'type' => MENU_CALLBACK,
+  );
+  return $items;
+}
+
+/**
+ * Implements hook_preprocess_page().
+ */
+function custom_breadcrumbs_paths_preprocess_page(&$variables) {
+  if (!custom_breadcrumbs_exclude_path()) {
+    $objs = (isset($variables) && is_array($variables)) ? $variables : array();
+    // Check for a match to provide custom breadcrumbs on module callback pages.
+    if (_custom_breadcrumbs_paths_set_breadcrumb($objs)) {
+      $variables['breadcrumb'] = theme('breadcrumb', array('breadcrumb' => drupal_get_breadcrumb()));
+    }
+  }
+}
+
+/**
+ * Implements hook_node_view().
+ */
+function custom_breadcrumbs_paths_node_view($node, $build_mode) {
+  if ($build_mode == 'full') {
+    // Check for breadcrumb at this path and set if a match is found.
+    // Nodes have higher priority than views and theme templates.
+    _custom_breadcrumbs_paths_set_breadcrumb(array('node' => $node), 3);
+  }
+}
+
+/**
+ * Implements hook_views_pre_render().
+ */
+function custom_breadcrumbs_paths_views_pre_render(&$view) {
+  // Don't really do anything with the view. This is just a pretense to insert a breadcrumb.
+  $curpath = drupal_get_normal_path($_GET['q']);
+  // Check to see if the view path matches the current path.
+  $viewpage = FALSE;
+  foreach ($view->display as $display) {
+    // We're only interested in main page views.
+    if (!_custom_breadcrumbs_allowed_display($display)) {
+      continue;
+    }
+    $viewpath = _custom_breadcrumbs_construct_view_path($display);
+    $viewpage = $viewpage || _custom_breadcrumbs_match_path($curpath, $viewpath);
+  }
+  if ($viewpage) {
+    // Check for breadcrumb at this path and set if a match is found.
+    // Views have a higher priority than theme templates, but lower than nodes.
+    _custom_breadcrumbs_paths_set_breadcrumb(array('view' => $view), 2);
+  }
+}
+
+/**
+ * Checks for a custom breadcrumb at the current path and sets it if one is found.
+ *
+ * @param $objs
+ *    An array of objects to be used in token replacement. Array keys indicate type of object.
+ * @param $priority
+ *    An integer indicating whether this attempt should override previous attempts.
+ *    The lowest priority is 1. Higher values are given priority over lower values.
+ */
+function _custom_breadcrumbs_paths_set_breadcrumb($objs = array(), $priority = 1) {
+  static $success;
+  // Allow a higher priority request to take precedence.
+  if (!isset($success) || ($priority > $success)) {
+    $matchpath = variable_get('custom_breadcrumbs_paths_allow_wildcards', FALSE);
+    $breadcrumbs = _custom_breadcrumbs_paths_get_breadcrumbs($matchpath);
+    if (!empty($breadcrumbs)) {
+      foreach ($breadcrumbs as $id => $breadcrumb) {
+        if ((!$matchpath) || _custom_breadcrumbs_paths_page_match($breadcrumb)) {
+          if (custom_breadcrumbs_is_visible($breadcrumb, $objs)) {
+            if ($matchpath) {
+              // Assume a longer path match is a better fit than a prior shorter match.
+              if (($pos = strrpos($breadcrumb->specific_path, '*')) !== FALSE) {
+                if (!isset($max) || (isset($max) && ($pos > $max))) {
+                  $max = $pos;
+                  $max_id = $id;
+                }
+              }
+              else {
+                // No wildcards in this breadcrumb, so its a direct match.
+                $max_id = $id;
+                // Don't check any others once a visible breadcrumb is found.
+                break;
+              }
+            }
+            else {
+              // Wildcards are not allowed, so this must be a direct match.
+              $max_id = $id;
+              // Don't check any others once a visible breadcrumb is found.
+              break;
+            }
+          }
+        }
+      }
+      if (isset($max_id)) {
+        custom_breadcrumbs_set_breadcrumb($breadcrumbs[$max_id], $objs);
+        $success = $priority;
+        return TRUE;
+      }
+    }
+  }
+  return FALSE;
+}
+
+/**
+ * Gets the custom_breadcrumbs_paths breadcrumbs.
+ *
+ * @param $matchpath
+ *   If TRUE, then load all paths breadcrumbs to allow wildcard matching,
+ *   otherwise only the current path is queried.
+ * @param $path
+ *   The drupal path to match against.
+ *
+ * @return $breadcrumbs
+ *   An array of breadcrumb objects meeting the query criteria.
+ */
+function _custom_breadcrumbs_paths_get_breadcrumbs($matchpath = FALSE, $path = NULL) {
+  // Don't bother checking if we don't have a path to match against.
+  $request = request_path();
+  if (isset($request) || !is_null($path)) {
+    global $language;
+    $languages = array(
+      'language' => $language->language,
+      'all' => '',
+    );
+    // Load all path breadcrumbs for wildcard matching.
+    $param = array();
+    if (!$matchpath) {
+      // Check for path prefix and strip it out if its found.
+      $prefix = $language->prefix . '\/';
+      $path = is_null($path) ? preg_replace('/^' . $prefix . '/', '', $request) : $path;
+      $param = array('specific_path' => $path);
+    }
+    $breadcrumbs = custom_breadcrumbs_load_breadcrumbs('custom_breadcrumbs_paths', NULL, $param, $languages);
+    return $breadcrumbs;
+  }
+}
+
+/**
+ * Determines if the current path matches the breadcrumb specific path.
+ *
+ * @param $breadcrumb
+ *   The breadcrumb object.
+ *
+ * @return $page_match
+ *   TRUE if the current path matches the breadcrumb specific path, FALSE otherwise.
+ */
+function _custom_breadcrumbs_paths_page_match($breadcrumb) {
+  $page_match = FALSE;
+  $request = request_path();
+  if (isset($request)) {
+    if (isset($breadcrumb->language) && $breadcrumb->language != '') {
+      // Check for a match on the prefixed path.
+      $path = $breadcrumb->language . '/' . $breadcrumb->specific_path;
+      $page_match = _custom_breadcrumbs_match_path($request, $path);
+    }
+    else {
+      // Append the current language if the breadcrumb language is 'All'.
+      global $language;
+      $path = $language->language . '/' . $breadcrumb->specific_path;
+      $page_match = _custom_breadcrumbs_match_path($request, $path);
+    }
+    if (!$page_match) {
+      // Check for a direct match.
+      $page_match = _custom_breadcrumbs_match_path($request, $breadcrumb->specific_path);
+    }
+  }
+  return $page_match;
+}
+
+/**
+ * Implements hook_cb_node_form_table().
+ *
+ * @param $node
+ *   The node object being edited.
+ *
+ * @return $breadcrumbs
+ *   An array of breadcrumb objects with the same path as the node
+ *   used in the custom_breadcrumbs fieldset on the node edit page.
+ */
+function custom_breadcrumbs_paths_cb_node_form_table($node) {
+  // Don't return anything if the node is newly created.
+  if (isset($node->nid)) {
+    $alias = !empty($node->path['alias']) ? $node->path['alias'] : drupal_get_path_alias("node/" . $node->nid);
+    $matchpath = variable_get('custom_breadcrumbs_paths_allow_wildcards', FALSE);
+    $param = ($matchpath) ? array() : array('specific_path' => $alias);
+    $breadcrumbs = custom_breadcrumbs_load_breadcrumbs('custom_breadcrumbs_paths', NULL, $param);
+    foreach ($breadcrumbs as $key => $breadcrumb) {
+      if (!_custom_breadcrumbs_match_path($alias, $breadcrumb->specific_path)) {
+        unset($breadcrumbs[$key]);
+      }
+    }
+    return $breadcrumbs;
+  }
+}
+
+/**
+ * Form builder; Provide an edit form for a custom breadcrumb paths breadcrumb.
+ *
+ * @ingroup forms
+ * @see custom_breadcrumbs_form_validate()
+ * @see custom_breadcrumbs_form_submit()
+ */
+function custom_breadcrumbs_paths_form($form, &$form_state, $type) {
+  $bid = arg(5);
+  $breadcrumb = NULL;
+  if (isset($bid)) {
+    drupal_set_title(t('Edit Custom Breadcrumb for Path'));
+    $breadcrumb = array_pop(custom_breadcrumbs_load_breadcrumbs('custom_breadcrumbs_paths', NULL, array('bid' => $bid)));
+  }
+  else {
+    drupal_set_title(t('Add Custom Breadcrumb for Path'));
+  }
+  $description = t('The Drupal path that this custom breadcrumb trail will apply to.');
+  if (variable_get('custom_breadcrumbs_paths_allow_wildcards', FALSE)) {
+    $description .= ' ' . t("The '*' character can be used as a wildcard to set a custom breadcrumb for all matching paths. For example, foo/bar* could be used to match every page with a path beginning with foo/bar. Do not include language prefixes in the path. This will be handled automatically according to the selected language.");
+  }
+  $form['specific_path'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Specific Path'),
+    '#required' => TRUE,
+    '#description' => $description,
+    '#default_value' => isset($breadcrumb->specific_path) ? $breadcrumb->specific_path : NULL,
+    '#weight' => -10,
+  );
+
+  $form += custom_breadcrumbs_common_form_elements($bid, $breadcrumb);
+  // Store the function to call to save this breadcrumb.
+  $form['#module'] = 'custom_breadcrumbs_paths';
+  $form['#infokey'] = 'paths';
+  $form['#submit'][] = 'custom_breadcrumbs_form_submit';
+  $form['#validate'][] = 'custom_breadcrumbs_form_validate';
+  return $form;
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function custom_breadcrumbs_paths_form_custom_breadcrumbs_admin_settings_alter(&$form, $form_state, $form_id) {
+  $form['adv_settings']['custom_breadcrumbs_paths_allow_wildcards'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Use wildcard pattern matching in paths'),
+    '#default_value' => variable_get('custom_breadcrumbs_paths_allow_wildcards', FALSE),
+    '#description' => t("If checked, the '*' character can be used as a wildcard to set a custom breadcrumb for all matching paths. For example, foo/bar/* could be used to match every page with a path beginning with foo/bar."),
+    '#weight' => -20,
+  );
+}

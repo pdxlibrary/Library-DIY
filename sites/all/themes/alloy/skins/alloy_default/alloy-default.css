@@ -1,0 +1,79 @@
+/* RWDG theme styles
+/-------------------------------------------------------------- */
+
+/* Class is applied to all background-shaded skins, for universal styles */
+.alloy-bg .inner {
+  -webkit-border-radius: 5px;
+  -moz-border-radius: 5px;
+  border-radius: 5px;
+  padding: .5em 1.5em;
+}
+
+.alloy-bg a:link,
+.alloy-bg a:visited {
+  color: rgba(0,0,0,0.8);
+  text-decoration: underline;
+}
+
+.alloy-bg a:hover,
+.alloy-bg a:active,
+.alloy-bg a:focus {
+  text-decoration: none;
+}
+
+.alloy-bg h2 {
+  text-shadow: 1px 1px 1px rgba(255,255,255,0.7);
+  filter: dropshadow(color=rgba(255,255,255,0.7), offx=1, offy=1);
+}
+
+.alloy-white-shadow .inner {
+  border: 1px solid #ccc;
+  background: white;
+  padding-top: 15px;
+  
+  /* inner shadow */
+  -moz-box-shadow: inset 0 0 5px 5px #efefef;
+  -webkit-box-shadow: inset 0 0 5px 5px#efefef;
+  box-shadow: inset 0 0 5px 5px #efefef;
+
+  /* inner gradient */
+  background-image: linear-gradient(bottom, rgb(233,233,233) 0%, rgb(255,255,255) 50%);
+  background-image: -o-linear-gradient(bottom, rgb(233,233,233) 0%, rgb(255,255,255) 50%);
+  background-image: -moz-linear-gradient(bottom, rgb(233,233,233) 0%, rgb(255,255,255) 50%);
+  background-image: -webkit-linear-gradient(bottom, rgb(233,233,233) 0%, rgb(255,255,255) 50%);
+  background-image: -ms-linear-gradient(bottom, rgb(233,233,233) 0%, rgb(255,255,255) 50%);
+  background-image: -webkit-gradient( linear,
+   left bottom, left top,
+   color-stop(0, rgb(233,233,233)), color-stop(0.5, rgb(255,255,255)));
+}
+
+.alloy-white .inner {
+  background: white;
+}
+
+.alloy-blue-title h2.title.block-title {
+  color: #197AC5;
+}
+
+.alloy-title-list .content ul li {
+  font-size: 1.1em;
+  padding: 3px;
+}
+
+.alloy-title-list .content ul li a {
+  font-weight: bold;
+}
+
+.alloy-green-list .content ul {
+  padding: 0;
+  margin: 0;
+}
+
+
+.alloy-green-list .content ul li {
+  background-image: url(green-bullet.png);
+  background-repeat: no-repeat;
+  background-position: center left;
+  list-style: none;
+  padding-left: 10px;
+}

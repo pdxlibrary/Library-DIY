@@ -1,0 +1,166 @@
+<?php
+
+/**
+ * @file
+ * Contains install, update, and uninstall functions for Fusion Apply.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function fusion_apply_schema() {
+  $schema['fusion_apply_skins'] = array(
+    'description' => 'Stores Fusion Apply data.',
+    'fields' => array(
+      'sid' => array(
+        'description' => 'The primary identifier for a skin configuration.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'theme' => array(
+        'description' => 'The theme this configuration applies to.',
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'module' => array(
+        'description' => 'The module this configuration applies to.',
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'element' => array(
+        'description' => 'The element this configuration applies to.',
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'skin' => array(
+        'description' => 'The skin that has been applied.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'options' => array(
+        'description' => 'A serialized array containing the skin options that have been applied.',
+        'type' => 'text',
+        'size' => 'big',
+        'not null' => TRUE,
+        'serialize' => TRUE,
+      ),
+      'status' => array(
+        'description' => 'Boolean indicating whether or not this item is enabled.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'size' => 'tiny',
+      ),
+    ),
+    'primary key' => array('sid'),
+    'unique keys' => array(
+      'theme_module_element_skin' => array(array('theme', 40), array('module', 40), array('element', 40), array('skin', 40)),
+    ),
+    'indexes' => array(
+      'theme' => array('theme'),
+      'module' => array(array('theme', 100), array('module', 100)),
+      'element' => array(array('theme', 100), array('module', 100), array('element', 100)),
+      'skin' => array('skin'),
+    ),
+  );
+
+  // @todo - move to fusion_apply_rules.install
+  $schema['fusion_apply_rules'] = array(
+    'description' => 'Stores skin rule data.',
+    'fields' => array(
+      'rid' => array(
+        'type' => 'serial',
+        'not null' => TRUE,
+        'description' => 'Primary Key: Unique skin rule ID.',
+      ),
+      'title' => array(
+        'description' => 'The administrative title for this rule.',
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'rule_type' => array(
+        'description' => 'The content type of this rule.',
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'node_types' => array(
+        'type' => 'text',
+        'size' => 'normal',
+        'not null' => FALSE,
+        'serialize' => TRUE,
+        'description' => 'A serialized array of node types for this record.',
+      ),
+      'roles' => array(
+        'type' => 'text',
+        'size' => 'normal',
+        'not null' => FALSE,
+        'serialize' => TRUE,
+        'description' => 'A serialized array of roles for this record.',
+      ),
+      'visibility' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'size' => 'tiny',
+        'description' => 'Flag to indicate how to show rules on pages. (0 = Show on all pages except listed pages, 1 = Show only on listed pages, 2 = Use custom PHP code to determine visibility)',
+      ),
+      'pages' => array(
+        'type' => 'text',
+        'not null' => TRUE,
+        'description' => 'Contains either a list of paths on which to include/exclude the rule or PHP code, depending on "visibility" setting.',
+      ),
+    ),
+    'primary key' => array('rid'),
+  );
+
+  return $schema;
+}
+
+/** 
+ * Reduces length for unique key theme_module_element_skin.
+ * See issue #1325542: Specified key was too long; max key length is 1000 bytes.
+ */
+function fusion_apply_update_7000() {
+  db_drop_unique_key('fusion_apply_skins', 'theme_module_element_skin');
+  db_add_unique_key('fusion_apply_skins', 'theme_module_element_skin', array(array('theme', 40), array('module', 40), array('element', 40), array('skin', 40)));
+}
+
+/** 
+ * Reduces key length for indexes module and element.
+ * Increases length for unique key theme_module_element_skin, but remains under 333 byte utf8 maximum.
+ * See issue #1325542: Specified key was too long; max key length is 1000 bytes.  
+ */
+function fusion_apply_update_7001() {  
+  db_drop_index('fusion_apply_skins', 'module');
+  db_add_index('fusion_apply_skins', 'module', array(array('theme', 100), array('module', 100)));
+  
+  db_drop_index('fusion_apply_skins', 'element');
+  db_add_index('fusion_apply_skins', 'element', array(array('theme', 100), array('module', 100), array('element', 100)));  
+  
+  db_drop_unique_key('fusion_apply_skins', 'theme_module_element_skin');
+  db_add_unique_key('fusion_apply_skins', 'theme_module_element_skin', array(array('theme', 50), array('module', 50), array('element', 100), array('skin', 100)));  
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function fusion_apply_uninstall() {
+  // Remove all Fusion Apply variables.
+  db_delete('variable')
+    ->condition('name', 'fusion_apply_%', 'LIKE')
+    ->execute();
+}
+

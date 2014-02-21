@@ -1,0 +1,596 @@
+<?php
+
+/**
+ * @file
+ * This module implements taxonomy_based breadcrumbs using a hybrid of methods
+ * developed for the custom_breadcrumbs and taxonomy_breadcrumbs modules.
+ * Breadcrumbs are provided for node and taxonomy term pages.
+ * If 'Use taxonomy hierarchy' is checked on the custom_breadcrumbs settings
+ * page, then the breadcrumb trail will be like
+ *   [HOME] >> [VOCABULARY] >> TERM >> [TERM] ...
+ *
+ *   - The HOME breadcrumb (if present) links to the home page.  The text
+ *     displayed for HOME is administrator configurable on the custom_breadcrumbs
+ *     settings page.
+ *   - The VOCABULARY breadcrumb (if present) will link to an administrator
+ *     defined page.  If the VOCABULARY does not have an administrator
+ *     defined page, it will not appear in the breadcrumb trail.
+ *   - Each TERM breadcrumb will link to either
+ *     (1) taxonomy/term/tid by default, or
+ *     (2) an administrator defined page if one is defined for the term.
+ *
+ * Examples:
+ *   home >> term >> term
+ *   mysite >> term >> term
+ *   home >> vocabulary >> term >> term
+ *   vocabulary >> term >> term
+ *
+ * If 'Use taxonomy hierarchy' is not checked, then the titles and paths used to
+ * construct the breadcrumb should be defined at the custom_breadcrumbs administration
+ * page in the same as other custom breadcrumbs. For a node containing multiple terms
+ * and vocabularies, the lightest term with a visible, matching custom breadcrumb is
+ * selected. If a taxonomy_term custom breadcrumb is not found, then taxonomy_vocabulary
+ * custom breadcrumbs are matched against the node's vocabularies.
+ */
+
+// Default value for Advanced Settings, Node Types.
+define('CUSTOM_BREADCRUMBS_TAXONOMY_NODE_TYPES_DEFAULT', 'book');
+
+/**
+ * Implements hook_cb_breadcrumb_info().
+ *
+ * @return an array with elements
+ *   'table' indicating the db_table to load the breadcrumb from,
+ *   'field' a field of the database table used to identify the breadcrumb,
+ *   'type' a string used for indicating the breadcrumb type on the admin list,
+ *   'name_constructor' a function which generates the breadcrumb name from the breadcrumb.
+ */
+function custom_breadcrumbs_taxonomy_cb_breadcrumb_info() {
+  $breadcrumb_type_info = array();
+  $breadcrumb_type_info['taxonomy_vocabulary'] = array(
+    'table' => 'custom_breadcrumbs_taxonomy_vocabulary',
+    'field' => 'vid',
+    'type' => 'taxonomy_vocabulary',
+    'name_constructor' => '_custom_breadcrumbs_taxonomy_vocabulary_breadcrumb_name',
+  );
+  $breadcrumb_type_info['taxonomy_term'] = array(
+    'table' => 'custom_breadcrumbs_taxonomy_term',
+    'field' => 'tid',
+    'type' => 'taxonomy_term',
+    'name_constructor' => '_custom_breadcrumbs_taxonomy_term_breadcrumb_name',
+  );
+  return $breadcrumb_type_info;
+}
+
+/**
+ * Constructs a name to display in the admin screen from the taxonomy term.
+ *
+ * @param $breadcrumb
+ *   The breadcrumb object.
+ *
+ * @return
+ *   A text string that will be used as the breadcrumb name.
+ */
+function _custom_breadcrumbs_taxonomy_term_breadcrumb_name($breadcrumb) {
+  $names = array();
+  $parents = taxonomy_get_parents_all($breadcrumb->tid);
+  while ($parent = array_shift($parents)) {
+    $names[] = $parent->name;
+  }
+  $term = taxonomy_term_load($breadcrumb->tid);
+  $vocabulary = taxonomy_vocabulary_load($term->vid);
+  $names[] = $vocabulary->name;
+  $names = array_reverse($names);
+  $output = implode('>', $names);
+  return $output;
+}
+
+/**
+ * Constructs a name to display in the admin screen from the taxonomy vocabularyd.
+ *
+ * @param $breadcrumb
+ *   The breadcrumb object.
+ *
+ * @return
+ *   A text string that will be used as the breadcrumb name.
+ */
+function _custom_breadcrumbs_taxonomy_vocabulary_breadcrumb_name($breadcrumb) {
+  $vocabulary = taxonomy_vocabulary_load($breadcrumb->vid);
+  return $vocabulary->name;
+}
+
+/**
+ * Implements hook_menu().
+ */
+function custom_breadcrumbs_taxonomy_menu() {
+  $items = array();
+  $items['admin/structure/custom_breadcrumbs/taxonomy_term/add'] = array(
+    'title' => 'Term',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('custom_breadcrumbs_taxonomy_term_form', 'taxonomy_term'),
+    'access arguments' => array('administer custom breadcrumbs'),
+    'file' => 'custom_breadcrumbs_taxonomy.admin.inc',
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 5,
+  );
+  $items['admin/structure/custom_breadcrumbs/taxonomy_term/edit'] = array(
+    'title' => 'Edit custom breadcrumb for taxonomy term',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('custom_breadcrumbs_taxonomy_term_form', 'taxonomy_term'),
+    'file' => 'custom_breadcrumbs_taxonomy.admin.inc',
+    'access arguments' => array('administer custom breadcrumbs'),
+    'type' => MENU_CALLBACK,
+  );
+  $items['admin/structure/custom_breadcrumbs/taxonomy_vocabulary/add'] = array(
+    'title' => 'Vocabulary',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('custom_breadcrumbs_taxonomy_vocabulary_form', 'taxonomy_vocabulary'),
+    'access arguments' => array('administer custom breadcrumbs'),
+    'file' => 'custom_breadcrumbs_taxonomy.admin.inc',
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 5,
+  );
+  $items['admin/structure/custom_breadcrumbs/taxonomy_vocabulary/edit'] = array(
+    'title' => 'Edit custom breadcrumb for taxonomy vobaculary',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('custom_breadcrumbs_taxonomy_vocabulary_form', 'taxonomy_vocabulary'),
+    'access arguments' => array('administer custom breadcrumbs'),
+    'file' => 'custom_breadcrumbs_taxonomy.admin.inc',
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_node_view().
+ */
+function custom_breadcrumbs_taxonomy_node_view($node, $build_mode) {
+  if ($build_mode == 'full') {
+    if (_custom_breadcrumbs_taxonomy_allowed_node_type($node->type)) {
+      module_load_include('inc', 'custom_breadcrumbs_taxonomy');
+      // Extract the most recently viewed term or the lightest term from lightest vocabulary assosciated with node.
+      $term = custom_breadcrumbs_taxonomy_node_get_term($node);
+      if ($term) {
+        $terms = custom_breadcrumbs_taxonomy_node_get_terms($node);
+        _custom_breadcrumbs_taxonomy_set_breadcrumb($term->tid, $term->vid, FALSE, array('node' => $node), $terms);
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_page_alter().
+ */
+function custom_breadcrumbs_taxonomy_page_alter(&$page) {
+  // Set the breadcrumb on taxonomy term pages.
+  if ($page_term = menu_get_object('taxonomy_term', 2)) {
+    module_load_include('inc', 'custom_breadcrumbs_taxonomy');
+    _custom_breadcrumbs_taxonomy_set_breadcrumb($page_term->tid, NULL, TRUE, array('taxonomy' => $page_term));
+  }
+}
+
+/**
+ * Implements hook_views_pre_render().
+ */
+function custom_breadcrumbs_taxonomy_views_pre_render(&$view) {
+  if (variable_get('custom_breadcrumbs_taxonomy_views', FALSE)) {
+    module_load_include('inc', 'custom_breadcrumbs', 'custom_breadcrumbs_common');
+    // Set the taxonomy breadcrumb for the view.
+    if (isset($view->display) && !empty($view->display)) {
+      $curpath = drupal_get_normal_path($_GET['q']);
+      // A taxonomy term page is any page with path a component 'taxonomy' followed by 'term'.
+      $arg_values = arg(NULL, $curpath);
+      $is_term_page = FALSE;
+      if (($key = array_search('taxonomy', $arg_values)) !== FALSE) {
+        $is_term_page = (isset($arg_values[$key + 1]) && $arg_values[$key + 1] == 'term');
+      }
+      foreach ($view->display as $id => $display) {
+        // Identify allowed displays for breadcrumb replacement.
+        if (!_custom_breadcrumbs_allowed_display($display)) {
+          continue;
+        }
+        $viewpath = _custom_breadcrumbs_construct_view_path($display);
+        // Verify the view path matches the current path.
+        if (_custom_breadcrumbs_match_path($curpath, $viewpath)) {
+          // Select matching display with the greatest number of explicit arguments.
+          $num = substr_count($display->display_options['path'], '%');
+          if (!isset($max) || (isset($max) && ($num > $max))) {
+            $max = $num;
+            $max_id = $id;
+          }
+        }
+      }
+      if (isset($max_id)) {
+        $display = $view->display[$max_id];
+        $arguments = _custom_breadcrumbs_views_display_arguments($display);
+        if (isset($arguments) && !empty($arguments)) {
+          $viewargs = (isset($display->handler->view->args) && is_array($display->handler->view->args)) ? $display->handler->view->args : array();
+          $arg_values = _custom_breadcrumbs_views_parse_args($arguments, $viewargs);
+          foreach ($arg_values['types'] as $key => $type) {
+            $tid = NULL;
+            $vid = NULL;
+            switch ($type) {
+              case 'tid':
+                $tid = $arg_values['values'][$key];
+                break;
+              case 'vid':
+                $vid = $arg_values['values'][$key];
+                break;
+            }
+            if (!is_null($tid) || !is_null($vid)) {
+              $terms = array();
+              if (!is_null($tid)) {
+                $term = taxonomy_term_load($tid);
+                $vid = $term->vid;
+                if ($term) {
+                  $terms[$term->tid] = $term;
+                }
+              }
+              module_load_include('inc', 'custom_breadcrumbs_taxonomy');
+              _custom_breadcrumbs_taxonomy_set_breadcrumb($tid, $vid, $is_term_page, array('view' => $view), $terms);
+              if (!is_null($tid)) {
+                _custom_breadcrumbs_taxonomy_recent_term($tid);
+              }
+              return;
+            }
+          }
+        }
+        // Otherwise, optionally use the first result node that is of an allowed node type to generate the breadcrumb.
+        if (variable_get('custom_breadcrumbs_taxonomy_result_nodes', FALSE) &&
+            _custom_breadcrumbs_allowed_display($display) && !empty($view->result)) {
+          foreach ($view->result as $result) {
+            if (isset($result->nid)) {
+              $node = node_load($result->nid);
+              if (_custom_breadcrumbs_taxonomy_allowed_node_type($node->type)) {
+                module_load_include('inc', 'custom_breadcrumbs_taxonomy');
+                $term = custom_breadcrumbs_taxonomy_node_get_term($node);
+                if ($term) {
+                  $terms = custom_breadcrumbs_taxonomy_node_get_terms($node);
+                  _custom_breadcrumbs_taxonomy_set_breadcrumb($term->tid, $term->vid, $is_term_page, array('node' => $node), $terms);
+                  _custom_breadcrumbs_taxonomy_recent_term($term->tid);
+                  return;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_help().
+ */
+function custom_breadcrumbs_taxonomy_help($path, $arg) {
+  switch ($path) {
+    case 'admin/help#custom_breadcrumbs_taxonomy':
+      $output = '<p>' . t('The custom_breadcrumbs_taxonomy module generates taxonomy-based breadcrumbs on node pages and taxonomy/term pages. The breadcrumb trail takes on the form:') . '</p>';
+      $output .= '<p>' . t('[HOME] >> [VOCABULARY] >> TERM >> [TERM] ...') . '</p>';
+
+      $output .= '<ul>';
+      $output .= '<li>' . t('The text displayed for HOME is configurable below. The <em>HOME</em> breadcrumb (if present) links to the homepage. The text displayed for HOME is configurable by an administrator. If the HOME breadcrumb is not defined by the administrator, it will not appear in the breadcrumb trail.') . '</li>';
+      $output .= '<li>' . t('The <em>VOCABULARY</em> breadcrumb (if present) will link to an administrator defined page. If the VOCABULARY does not have an administrator defined page, it will not appear in the breadcrumb trail. This can be configured on the add/edit vocabulary pages within <a href="@taxonomy">administer >> categories</a> (taxonomy).', array('@taxonomy' => url('admin/structure/taxonomy'))) . '</li>';
+      $output .= '<li>' . t('Each <em>TERM</em> breadcrumb will link to either (1) taxonomy/term/tid by default, or (2) an administrator defined page if one is defined for the term. This can be configured on the add/edit term pages within <a href="@taxonomy">administer >> categories</a> (taxonomy).', array('@taxonomy' => url('admin/structure/taxonomy'))) . '</li>';
+      $output .= '</ul>';
+
+      $output .= '<h3>' . t('Examples:') . '</h3>';
+      $output .= '<ul>';
+      $output .= '<li>' . t('home >> term >> term') . '</li>';
+      $output .= '<li>' . t('mysite >> term >> term') . '</li>';
+      $output .= '<li>' . t('home >> vocabulary >> term >> term') . '</li>';
+      $output .= '<li>' . t('vocabulary >> term >> term') . '</li>';
+      $output .= '</ul>';
+
+      return $output;
+  }
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function custom_breadcrumbs_taxonomy_form_custom_breadcrumbs_admin_settings_alter(&$form, $form_state, $form_id) {
+  $form['settings']['custom_breadcrumbs_taxonomy'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Taxonomy structure'),
+    '#collapsible' => TRUE,
+    '#collapsed' => FALSE,
+  );
+  $form['settings']['custom_breadcrumbs_taxonomy']['custom_breadcrumbs_taxonomy_use_hierarchy'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Use the taxonomy hierarchy to set the breadcrumb trail for nodes and taxonomy pages'),
+    '#description' => t('If selected, the custom breadcrumb trail will be constructed from the taxonomy vocabulary and terms associated with the node. Breadcrumb titles will be selected from taxonomy term and vocabulary names.'),
+    '#default_value' => variable_get('custom_breadcrumbs_taxonomy_use_hierarchy', TRUE),
+    '#weight' => 10,
+  );
+
+  $form['settings']['custom_breadcrumbs_taxonomy']['custom_breadcrumbs_taxonomy_append_breadcrumb'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Append taxonomy breadcrumb trail to current breadcrumb for selected node types'),
+    '#default_value' => variable_get('custom_breadcrumbs_taxonomy_append_breadcrumb', FALSE),
+    '#description' => t('If enabled along with the taxonomy hierarchy option (above), the taxonomy breadcrumb trail will be appended to the current breadcrumb trail.'),
+    '#weight' => 20,
+  );
+
+  $form['settings']['custom_breadcrumbs_taxonomy']['custom_breadcrumbs_taxonomy_show_vocabulary'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Show vocabulary in breadcrumb trail'),
+    '#description' => t('If enabled, the vocabulary name will be shown in the breadcrumb trail, even when a custom breadcrumb has not been defined for the vocabulary. In this case the crumb will not be linked. If a custom breadcrumb has been defined for the vocabulary, it will be displayed whether or not this option is enabled.'),
+    '#default_value' => variable_get('custom_breadcrumbs_taxonomy_show_vocabulary', FALSE),
+    '#weight' => 25,
+  );
+
+  $form['settings']['custom_breadcrumbs_taxonomy']['custom_breadcrumbs_taxonomy_show_current_term'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Show current taxonomy term in breadcrumb trail for node pages'),
+    '#description' => t('If enabled, the lightest term associated with node is shown as the last breadcrumb in the breadcrumb trail. Otherwise, the only terms shown in the breadcrumb trail are parent terms (if any parents exist). The recommended setting is enabled.'),
+    '#default_value' => variable_get('custom_breadcrumbs_taxonomy_show_current_term', TRUE),
+    '#weight' => 30,
+  );
+
+  $form['settings']['custom_breadcrumbs_taxonomy']['custom_breadcrumbs_taxonomy_show_current_term_term'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Show current taxonomy term in breadcrumb trail on the taxonomy term page'),
+    '#description' => t('If enabled, the taxonomy term name is shown as the last breadcrumb item in the breadcrumb trail on the taxonomy term page.'),
+    '#default_value' => variable_get('custom_breadcrumbs_taxonomy_show_current_term_term', FALSE),
+    '#weight' => 35,
+  );
+
+  $form['settings']['custom_breadcrumbs_taxonomy']['custom_breadcrumbs_taxonomy_include_node_title'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Show current node title in taxonomy breadcrumb trail'),
+    '#default_value' => variable_get('custom_breadcrumbs_taxonomy_include_node_title', FALSE),
+    '#description' => t("If enabled along with the taxonomy hierarchy option (above) and if viewing a node, the node's title will be shown as the last item in the breadcrumb trail."),
+    '#weight' => 40,
+  );
+
+  $form['settings']['custom_breadcrumbs_taxonomy']['custom_breadcrumbs_taxonomy_session'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Use session variables to select the most recently viewed taxonomy term to use on pages with more than one term'),
+    '#default_value' => variable_get('custom_breadcrumbs_taxonomy_session', FALSE),
+    '#description' => t("With this option, the most recently selected term is stored in a session variable and used to prepare the most appropriate taxonomy breadcrumb for pages with multiple terms. If this is not enabled, the lightest term will be used to set the taxonomy breadcrumb on pages with more than one term."),
+    '#weight' => 42,
+  );
+
+  $form['settings']['custom_breadcrumbs_taxonomy']['custom_breadcrumbs_taxonomy_no_anon_sessions'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Do not use session variables to help select the correct taxonomy term for anonymous users'),
+    '#default_value' => variable_get('custom_breadcrumbs_taxonomy_no_anon_sessions', FALSE),
+    '#disabled' => !variable_get('custom_breadcrumbs_taxonomy_session', FALSE),
+    '#weight' => 44,
+  );
+
+  $form['settings']['custom_breadcrumbs_taxonomy']['custom_breadcrumbs_taxonomy_uncache'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Do not cache pages with custom breadcrumbs taxonomy breadcrumbs'),
+    '#default_value' => variable_get('custom_breadcrumbs_taxonomy_uncache', FALSE),
+    '#disabled' => !variable_get('custom_breadcrumbs_taxonomy_session', FALSE),
+    '#description' => t("With normal Drupal caching, dynamic taxonomy breadcrumbs may not be created for anonymous users. Enabling this option will prevent caching of pages that have a taxonomy breadcrumb so the breadcrumb can be properly constructed. This requires the use of session variables and will reduce performance on the pages that are not cached."),
+    '#weight' => 46,
+  );
+
+  if (module_exists('views')) {
+    $form['settings']['custom_breadcrumbs_taxonomy']['custom_breadcrumbs_taxonomy_views'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Use taxonomy-based breadcrumbs for views'),
+      '#default_value' => variable_get('custom_breadcrumbs_taxonomy_views', FALSE),
+      '#description' => t('If enabled, the view argument and/or the taxonomy structure of the nodes returned by views will be used to form the taxonomy breadcrumb trail.'),
+      '#weight' => 50,
+    );
+
+    $form['settings']['custom_breadcrumbs_taxonomy']['custom_breadcrumbs_taxonomy_result_nodes'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Use the taxonomy of nodes returned by a view to create the taxonomy breadcrumb'),
+      '#default_value' => variable_get('custom_breadcrumbs_taxonomy_result_nodes', FALSE),
+      '#description' => t('If enabled, when a taxonomy-based view argument is not available the taxonomy from the first node returned by the view will be used. The view results will not be used if the taxonomy can be determined from the view argument.'),
+      '#weight' => 55,
+    );
+  }
+
+  $form['settings']['custom_breadcrumbs_taxonomy']['custom_breadcrumbs_taxonomy_include_nodes'] = array(
+    '#type' => 'radios',
+    '#title' => t('Include or exclude taxonomy-based breadcrumbs for the following node types'),
+    '#default_value' => variable_get('custom_breadcrumbs_taxonomy_include_nodes', 0),
+    '#options' => array(
+      1 => t('Include'),
+      0 => t('Exclude'),
+    ),
+    '#weight' => 60,
+  );
+
+  $cb_tax_types = (array) variable_get('custom_breadcrumbs_taxonomy_node_types', CUSTOM_BREADCRUMBS_TAXONOMY_NODE_TYPES_DEFAULT);
+  $default = array();
+  foreach ($cb_tax_types as $index => $value) {
+    if ($value) {
+      $default[] = $index;
+    }
+  }
+
+  $form['settings']['custom_breadcrumbs_taxonomy']['custom_breadcrumbs_taxonomy_node_types'] = array(
+    '#type' => 'checkboxes',
+    '#multiple' => TRUE,
+    '#title' => t('Node types to include or exclude'),
+    '#default_value' => $default,
+    '#options' => array_map('check_plain', node_type_get_names()),
+    '#description' => t('A list of node types to include or exclude applying taxonomy-based breadcrumbs.'),
+    '#weight' => 70,
+  );
+
+  $vocabs = taxonomy_get_vocabularies();
+  $options = array();
+  foreach ($vocabs as $vocab) {
+    $name = check_plain($vocab->name);
+    $options[$vocab->vid] = $name;
+  }
+
+  $cb_vocabs = variable_get('custom_breadcrumbs_taxonomy_excluded_vocabs', array());
+  $default = array();
+  foreach ($cb_vocabs as $index => $value) {
+    if ($value) {
+      $default[] = $index;
+    }
+  }
+
+  $form['settings']['custom_breadcrumbs_taxonomy']['custom_breadcrumbs_taxonomy_excluded_vocabs'] = array(
+    '#type' => 'checkboxes',
+    '#multiple' => TRUE,
+    '#title' => t('Vocabularies to exclude from custom breadcrumbs taxonomy'),
+    '#default_value' => $default,
+    '#options' => $options,
+    '#description' => t('A list of vocabularies to exclude applying taxonomy-based breadcrumbs.'),
+    '#weight' => 75,
+  );
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function custom_breadcrumbs_taxonomy_form_taxonomy_form_vocabulary_alter(&$form, &$form_state) {
+  if (isset($form['vid']['#value']) && !(isset($_POST['op']) && $_POST['op'] == t('Delete')) || isset($_POST['confirm'])) {
+    // Load all custom breadcrumbs for this vid.
+    $breadcrumbs = custom_breadcrumbs_load_breadcrumbs('custom_breadcrumbs_taxonomy', 'custom_breadcrumbs_taxonomy_vocabulary', array('vid' => $form['vid']['#value']));
+    $output = NULL;
+    if (count($breadcrumbs) > 0) {
+      $output = '<p>' . t('Custom breadcrumbs have been created for this vocabulary. Use the !link to add additional breadcrumbs. Or follow the links in the table below to edit or delete existing custom breadcrumbs.', array('!link' => l('Custom Breadcrumbs Administration Page', 'admin/structure/custom_breadcrumbs'))) . '</p>';
+    }
+    // Show a table of custom breadcrumbs with links to the edit form.
+    module_load_include('inc', 'custom_breadcrumbs', 'custom_breadcrumbs.admin');
+    $output .= custom_breadcrumbs_simple_breadcrumb_table($breadcrumbs);
+    $form['custom_breadcrumbs_taxonomy_vocabulary'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('Custom Breadcrumbs for Taxonomy'),
+      '#collapsible' => TRUE,
+      '#collapsed' => TRUE,
+      '#weight' => -50,
+    );
+    $form['custom_breadcrumbs_taxonomy_vocabulary']['breadcrumb_table'] = array('#markup' => $output);
+  }
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function custom_breadcrumbs_taxonomy_form_taxonomy_form_term_alter(&$form, &$form_state) {
+  if (isset($form['tid']['#value']) && !(isset($_POST['op']) && $_POST['op'] == t('Delete')) || isset($_POST['confirm'])) {
+    // Load all custom breadcrumbs for this tid.
+    $breadcrumbs = custom_breadcrumbs_load_breadcrumbs('custom_breadcrumbs_taxonomy', 'custom_breadcrumbs_taxonomy_term', array('tid' => $form['tid']['#value']));
+    $output = NULL;
+    if (count($breadcrumbs) > 0) {
+      $output = '<p>' . t('Custom breadcrumbs have been created for this term. Use the <a href="@link">Custom Breadcrumbs Administration Page</a> to add additional breadcrumbs. Or follow the links in the table below to edit or delete existing custom breadcrumbs.', array('@link' => url('admin/structure/custom_breadcrumbs'))) . '</p>';
+    }
+    // Show a table of custom breadcrumbs with links to the edit form.
+    module_load_include('inc', 'custom_breadcrumbs', 'custom_breadcrumbs.admin');
+    $output .= custom_breadcrumbs_simple_breadcrumb_table($breadcrumbs);
+    $form['custom_breadcrumbs_taxonomy_term'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('Custom Breadcrumbs for Taxonomy'),
+      '#collapsible' => TRUE,
+      '#collapsed' => TRUE,
+      '#weight' => -50,
+    );
+    $form['custom_breadcrumbs_taxonomy_term']['breadcrumb_table'] = array('#markup' => $output);
+  }
+}
+
+/**
+ * Implements hook_cb_node_form_table().
+ *
+ * @param $node
+ *   The node object being edited
+ *
+ * @return $breadcrumbs
+ *   an array of breadcrumb objects for taxonomy terms and vocabs matching the node
+ *   to be used in the custom_breadcrumbs fieldset on the node edit page
+ */
+function custom_breadcrumbs_taxonomy_cb_node_form_table($node) {
+  $breadcrumbs = array();
+  if (_custom_breadcrumbs_taxonomy_allowed_node_type($node->type)) {
+    if (!variable_get('custom_breadcrumbs_taxonomy_use_hierarchy', TRUE)) {
+      // Check each term to see if it has a custom breadcrumb.
+      module_load_include('inc', 'custom_breadcrumbs_taxonomy');
+      $terms = custom_breadcrumbs_taxonomy_node_get_terms($node);
+      foreach ($terms as $term) {
+        $more = custom_breadcrumbs_load_breadcrumbs('custom_breadcrumbs_taxonomy', 'custom_breadcrumbs_taxonomy_term', array('tid' => $term->tid));
+        if (!empty($more)) {
+          $breadcrumbs = array_merge($breadcrumbs, $more);
+        }
+      }
+      // Also look for a match on the taxonomy vocabulary.
+      $vocabularies = taxonomy_get_vocabularies($node->type);
+      foreach ($vocabularies as $vocabulary) {
+        $more = custom_breadcrumbs_load_breadcrumbs('custom_breadcrumbs_taxonomy', 'custom_breadcrumbs_taxonomy_vocabulary', array('vid' => $vocabulary->vid));
+        if (!empty($more)) {
+          $breadcrumbs = array_merge($breadcrumbs, $more);
+        }
+      }
+    }
+  }
+  return $breadcrumbs;
+}
+
+/**
+ * Determines if the current node is one of the types listed on the advanced settings page.
+ *
+ * @param $nodetype
+ *   The node type being considered for a custom breadcrumb.
+ *
+ * @return
+ *   TRUE if the node type is selected for a custom breadcrumbs taxonomy breadcrumb,
+ *   FALSE otherwise.
+ */
+function _custom_breadcrumbs_taxonomy_allowed_node_type($nodetype) {
+  // If the node type IS IN     the node types list and the list IS     inclusive OR
+  // If the node type IS NOT IN the node types list and the list IS NOT inclusive (e.g. exclusive)
+  // THEN modify the breadcrumb trail.
+
+  $array_of_types = array_filter((array) variable_get('custom_breadcrumbs_taxonomy_node_types', CUSTOM_BREADCRUMBS_TAXONOMY_NODE_TYPES_DEFAULT));
+  $in_list = in_array($nodetype, $array_of_types);
+  $allowed = ($in_list == variable_get('custom_breadcrumbs_taxonomy_include_nodes', 0));
+  return $allowed;
+}
+
+/**
+ * Implements hook_enable().
+ */
+function custom_breadcrumbs_taxonomy_enable() {
+  // Sets weight of custom_breadcrumbs_taxonomy to be greater than taxonomy, views, and custom_breadcrumbs.
+  $max_weight = custom_breadcrumbs_taxonomy_minimum_module_weight();
+  $current_weight = _custom_breadcrumbs_get_module_weight(array('custom_breadcrumbs_taxonomy'));
+  if ($current_weight['custom_breadcrumbs_taxonomy'] < $max_weight) {
+    drupal_set_message(t('Increasing the weight of custom_breadcrumbs_taxonomy for use with other modules.'));
+    db_update('system')
+      ->fields(array(
+        'weight' => $max_weight,
+        ))
+      ->condition('name', 'custom_breadcrumbs_taxonomy')
+      ->execute();
+    variable_set('menu_rebuild_needed', TRUE);
+  }
+}
+
+/**
+ * Implements hook_minimum_module_weight().
+ *
+ * @see custom_breadcrumbs_admin_settings_submit().
+ */
+function custom_breadcrumbs_taxonomy_minimum_module_weight() {
+  $modules = array('taxonomy', 'views', 'page_manager', 'custom_breadcrumbs', 'i18ntaxonomy');
+  $weights = _custom_breadcrumbs_get_module_weight($modules);
+  $max_weight = array_pop($weights);
+  return $max_weight + 1;
+}
+
+/**
+ * Implements hook_exit().
+ */
+function custom_breadcrumbs_taxonomy_exit() {
+  // Optionally, do not cache page on which a taxonomy breadcrumb has been set.
+  // For nodes with more than one vocabulary, the breadcrumb may depend on the sequence of pages visited.
+  // If the page is cached for anonymous users (normal caching) for performance, the breadcrumb may not reflect
+  // the correct sequence. This should not be a problem for authenticated users.
+  if (variable_get('custom_breadcrumbs_taxonomy_uncache', FALSE) && isset($_SESSION['custom_breadcrumbs_taxonomy_set'])) {
+    global $base_root;
+    cache_clear_all($base_root . request_uri(), 'cache_page');
+  }
+}

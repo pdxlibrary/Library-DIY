@@ -1,0 +1,639 @@
+<?php
+
+/**
+ * @file
+ * Tests for the Fusion Apply UI module.
+ */
+
+/**
+ * Base class for Fusion Apply UI tests.
+ */
+class FusionApplyUITestCase extends DrupalWebTestCase {
+  protected $profile = 'testing';
+
+  function setUp() {
+    parent::setUp(array('block', 'contextual', 'fusion_apply_test', 'fusion_apply_ui', 'fusion_apply_rules'));
+
+    $this->admin_user = $this->drupalCreateUser(array(
+      'administer blocks',
+      'access contextual links',
+      'administer fusion',
+      'edit skin settings',
+      'edit advanced skin settings',
+    ));
+    $this->drupalLogin($this->admin_user);
+
+    // Enable main system block for content region and the user menu block for
+    // the first sidebar.
+    // @see http://drupal.org/node/913086
+    $default_theme = variable_get('theme_default', 'bartik');
+    db_merge('block')
+      ->key(array(
+        'theme' => $default_theme,
+        'module' => 'system',
+        'delta' => 'main',
+      ))
+      ->fields(array(
+        'status' => 1,
+        'region' => 'content',
+        'pages' => '',
+      ))
+      ->execute();
+    db_merge('block')
+      ->key(array(
+        'theme' => $default_theme,
+        'module' => 'system',
+        'delta' => 'user-menu',
+      ))
+      ->fields(array(
+        'status' => 1,
+        'region' => 'sidebar_first',
+        'pages' => '',
+      ))
+      ->execute();
+
+    // Enable Garland and fusion_apply_test_subtheme without enabling its base theme in
+    // order to test subtheme inheritance functionality.
+    theme_enable(array('garland', 'fusion_apply_test_subtheme'));
+  }
+
+  /**
+   * Asserts that a class is set for the given element id.
+   *
+   * @param $id
+   *   Id of the HTML element to check.
+   * @param $class
+   *   The class name to check for.
+   * @param $message
+   *   Message to display.
+   * @return
+   *   TRUE on pass, FALSE on fail.
+   */
+  function assertFusionApplyClass($id, $class, $message = '') {
+    $elements = $this->xpath('//div[@id=:id]', array(':id' => $id));
+    $class_attr = (string) $elements[0]['class'];
+    $this->assertTrue(strpos($class_attr, ' ' . $class . ' '), $message);
+  }
+
+  /**
+   * Asserts that a class is not set for the given element id.
+   *
+   * @param $id
+   *   Id of the HTML element to check.
+   * @param $class
+   *   The class name to check for.
+   * @param $message
+   *   Message to display.
+   * @return
+   *   TRUE on pass, FALSE on fail.
+   */
+  function assertNoFusionApplyClass($id, $class, $message = '') {
+    $elements = $this->xpath('//div[@id=:id]', array(':id' => $id));
+    $class_attr = (string) $elements[0]['class'];
+    $this->assertFalse(strpos($class_attr, ' ' . $class . ' '), $message);
+  }
+}
+
+/**
+ * Tests UI functionality.
+ */
+class FusionApplyUIBasicTestCase extends FusionApplyUITestCase {
+  public static function getInfo() {
+    return array(
+      'name' => 'UI',
+      'description' => 'Tests basic Fusion Apply UI functionality.',
+      'group' => 'Fusion Accelerator',
+    );
+  }
+
+  /**
+   * Tests basic configuration and applying of a skin.
+   *
+   * @todo For some reason, contextual links are not visible in the debug output
+   *   when running tests; likely a core bug in contextual.js. However, the
+   *   links are contained in the output. Keep this in mind when manually
+   *   reviewing the debug output after running tests!
+   * @todo Remove the overly verbose inline comments after the Fusion Apply
+   *   development team has figured out how to write tests.
+   */
+  function testSkinEdit() {
+    // Go to the front page, on which the user menu block should appear.
+    $this->drupalGet('');
+    // Click the first (index 0) 'Edit skin' link on the page, which should be
+    // the link in the contextual links of the user menu block, since no other
+    // skinnable elements are visible on the page.
+    // For now, this is a simple way to assert and access Fusion Apply links. In the
+    // future, we want to be more explicit in testing; i.e., verify that there
+    // is really only this link, its 'href' is correct, that it appears in the
+    // right location, etc.pp; DrupalWebTestCase ($this) provides many helper
+    // functions to assert such things.
+    $this->clickLink(t('Edit skin'), 0);
+    // Verify that we end up on the expected URL to configure skins for the
+    // user menu block.
+    $front = variable_get('site_frontpage', 'node');
+    $this->assertUrl('admin/appearance/fusion/edit/nojs/block/system__user-menu/configure', array(
+      'query' => array('destination' => $front),
+    ));
+
+    // fusion_apply_test.module got enabled in setUp(), so its skins should be
+    // available.
+    // Verify that we can apply the fusion_apply_test_font skin to the block.
+    $edit = array(
+      'fusion_apply_settings[block_group][bartik][groups][typography][fusion_apply_test_font]' => 'font_1',
+    );
+    // NULL means that we want to post to the page that is still contained in
+    // SimpleTest's internal browser; i.e., the page of the path above. Instead
+    // of passing NULL, you can also pass a Drupal system path and SimpleTest
+    // will automatically do a $this->drupalGet($path) for you before posting.
+    $this->drupalPost(NULL, $edit, t('Save'));
+
+    // After posting, we expect to be redirected to the originating page, due
+    // to the 'destination' query parameter in the 'Edit skin' link. Since we
+    // came from the front page, Drupal will redirect us to the actual path of
+    // the front page, not ''.
+    // Verify that we were redirected to the originating page.
+    $this->assertUrl($front);
+
+    // Verify that the skin has been applied.
+    $this->assertFusionApplyClass('block-system-user-menu', 'font-1', 'CSS class of configured skin option found.');
+  }
+
+  /**
+   * Tests access control for editing additional CSS classes.
+   */
+  function testSkinAdditionalEdit() {
+    // Verify that we can apply additional CSS classes.
+    $edit = array(
+      'fusion_apply_settings[block_group][bartik][groups][_additional][_additional]' => 'additional',
+    );
+    $this->drupalPost('admin/appearance/fusion/edit/nojs/block/system__user-menu/configure', $edit, t('Save'));
+
+    // Verify that the skin has been applied.
+    $this->drupalGet('');
+    $this->assertFusionApplyClass('block-system-user-menu', 'additional', 'Additional CSS class <em>additional</em> of configured skin option found.');
+
+    // Now let's check the same for a user that has no access to alter this.
+    $user = $this->drupalCreateUser(array('edit skin settings'));
+    $this->drupalLogin($user);
+
+    // Verify that the additional CSS classes field is not enabled.
+    $this->drupalGet('admin/appearance/fusion/edit/nojs/block/system__user-menu/configure');
+    $this->assertNoFieldByName('fusion_apply_settings[block_group][bartik][groups][_additional][_additional]', NULL, 'Additional CSS classes field is not enabled for this user.');
+
+    // Save form when additional CSS classes is not set.
+    $edit = array();
+    $this->drupalPost(NULL, $edit, t('Save'));
+
+    // Verify that the old class is still applied.
+    $this->drupalGet('');
+    $this->assertFusionApplyClass('block-system-user-menu', 'additional', 'Additional CSS class <em>additional</em> of configured skin option found.');
+  }
+}
+
+/**
+ * Tests administrative pages functionality.
+ */
+class FusionApplyUIAdminTestCase extends FusionApplyUITestCase {
+  public static function getInfo() {
+    return array(
+      'name' => 'Administration',
+      'description' => 'Tests administrative Fusion Apply UI functionality.',
+      'group' => 'Fusion Accelerator',
+    );
+  }
+
+  function setUp() {
+    parent::setUp(array('fusion_apply_test', 'fusion_apply_ui', 'fusion_apply_rules'));
+
+    $this->admin_user = $this->drupalCreateUser(array(
+      'administer fusion',
+      'edit skin settings',
+      'edit advanced skin settings',
+    ));
+    $this->drupalLogin($this->admin_user);
+
+    // Enable Garland and fusion_apply_test_subtheme without enabling its base theme in
+    // order to test subtheme inheritance functionality.
+    theme_enable(array('garland', 'fusion_apply_test_subtheme'));
+  }
+
+  /**
+   * Tests default status of skins.
+   *
+   * The fusion_apply_test_basetheme skin defined by the fusion_apply_test_basetheme theme
+   * specifies a default status for itself. Its subtheme should inherit the
+   * status of the basetheme.
+   *
+   * @todo Add assertions for 'default status' itself.
+   */
+  function testSkinDefaultStatus() {
+    // Verify that the skin appears on the skin overview page.
+    $this->drupalGet('admin/appearance/fusion/skins');
+    $this->assertLinkByHref('admin/appearance/fusion/skins/settings/fusion_apply_test_basetheme');
+    $this->drupalGet('admin/appearance/fusion/skins/settings/fusion_apply_test_basetheme');
+
+    // Verify that it is enabled for the fusion_apply_test_subtheme, and disabled for
+    // Bartik and Garland by default.
+    // @todo - temporarily disabling these tests.  They apply to the "enabled" checkboxes which are currently not functional.
+    //$this->assertFieldChecked('edit-status-fusion_apply-test-subtheme', 'fusion_apply_test_basetheme skin is enabled for fusion_apply_test_subtheme.');
+    //$this->assertNoFieldChecked('edit-status-bartik', 'fusion_apply_test_basetheme skin is disabled for Bartik.');
+    //$this->assertNoFieldChecked('edit-status-garland', 'fusion_apply_test_basetheme skin is disabled for Garland.');
+
+    // Override the status for fusion_apply_test_subtheme and Bartik, then verify them.
+    $skin = (object) array(
+      'theme' => 'fusion_apply_test_subtheme',
+      'module' => 'block',
+      'element' => 'system-user-menu',
+      'skin' => 'fusion_apply_test_subtheme',
+      'options' => array('option1', 'option2'),
+      'status' => 1,
+    );
+    fusion_apply_skin_save($skin);
+    $skin = fusion_apply_skin_load($skin->sid);
+
+    // Override the default skin.
+    $skin->element = 'system-main';
+    $this->drupalGet('admin/appearance/fusion');
+    $this->clickLink(t('disable'), 0);
+    
+    // Unaltered skin configuration object should have been saved with only the status updated.
+    // Load an uncached version of the skin configuration object.
+    $skin = fusion_apply_skin_load_unchanged($skin->sid);
+    $this->assertFalse($skin->status, 'Status was disabled successfully.');
+    $this->assertEqual($skin->element, 'system-user-menu', 'Only status was updated, even though the object was modified before updating status.');
+
+    // Enable the skin configuration.
+    $this->drupalGet('admin/appearance/fusion');
+    $this->clickLink(t('enable'), 0);
+    // Load an uncached version of the skin configuration object.
+    $skin = fusion_apply_skin_load_unchanged($skin->sid);
+    $this->assertTrue($skin->status, 'Status was enabled successfully.');
+  }
+
+  /**
+   * Tests skin group functionality.
+   */
+  function testSkinGroups() {
+    $this->drupalGet('admin/appearance/fusion/skins');
+
+    // Verify that the 'General' (default) group appears.
+    $this->assertText(t('General'));
+
+    // Verify that the 'Typography' group appears, since fusion_apply_test module
+    // registers a skin in that group.
+    $this->assertText(t('Typography'));
+  }
+
+  /**
+   * Tests skin configuration listing functionality.
+   */
+  function testSkinListing() {
+    $skin = (object) array(
+      'theme' => 'fusion_apply_test_subtheme',
+      'module' => 'block',
+      'element' => 'system__user-menu',
+      'skin' => 'fusion_apply_test_subtheme',
+      'options' => array('option1', 'option2'),
+      'status' => 1,
+    );
+    fusion_apply_skin_save($skin);
+
+    // Verify that the skin configuration appears on the skin configurations overview page.
+    $this->drupalGet('admin/appearance/fusion');
+    $this->assertLinkByHref('admin/appearance/fusion/delete/' . $skin->sid . '?destination=admin/appearance/fusion', 0, 'Skin configuration was found on overview page.');
+
+    // @todo Should we check the filtering and update options functionality?
+  }
+}
+
+/**
+ * Tests rules administrative pages functionality.
+ */
+class FusionApplyUIRulesTestCase extends FusionApplyUITestCase {
+  public static function getInfo() {
+    return array(
+      'name' => 'Rules UI',
+      'description' => 'Tests rules functionality for Fusion Apply UI.',
+      'group' => 'Fusion Accelerator',
+    );
+  }
+
+  /**
+   * Tests administrative interface for rules.
+   */
+  function testRules() {
+    // Test that there is a rules page.
+    $this->drupalGet('admin/appearance/fusion');
+    $this->assertLinkByHref('admin/appearance/fusion/rules');
+
+    // Test that there is a way to add rules.
+    $this->drupalGet('admin/appearance/fusion/rules');
+    $this->clickLink(t('Create a new rule'), 0);
+
+    // Verify that we end up on the expected URL.
+    $this->assertUrl('admin/appearance/fusion/rules/add');
+
+    // Verify that we can create the rule.
+    $edit = array(
+      'rule[title]' => 'Rule 1',
+      'rule[rule_type]' => 'page',
+    );
+    $this->drupalPost(NULL, $edit, t('Add'));
+
+    // After posting, we expect to be redirected to the rule edit page.
+    $this->assertUrl('admin/appearance/fusion/rules/edit/1');
+
+    // Save rule.
+    // @todo Add a skin and test whether it applies properly or not.
+    $edit = array(
+    );
+    $this->drupalPost(NULL, $edit, t('Save rule'));
+
+    // We should be returned back to the rules page.
+    $this->assertUrl('admin/appearance/fusion/rules');
+
+    // Make sure the new rule appears listed on this page.
+    $this->assertLinkByHref('admin/appearance/fusion/rules/edit/1');
+  }
+}
+
+/**
+ * Tests UI functionality for Block plugin.
+ */
+class FusionApplyUIPluginTestCase extends DrupalWebTestCase {
+  public static function getInfo() {
+    return array(
+      'name' => 'Plugins UI - Core',
+      'description' => 'Tests Fusion Apply UI functionality for functionality plugins from Drupal core.',
+      'group' => 'Fusion Accelerator',
+    );
+  }
+
+  function setUp() {
+    parent::setUp(array('block', 'comment', 'node', 'fusion_apply_ui', 'fusion_apply_rules'));
+
+    $this->admin_user = $this->drupalCreateUser(array(
+      'administer blocks',
+      'access comments',
+      'access content',
+      'post comments',
+      'skip comment approval',
+
+      'access contextual links',
+      'administer fusion',
+      'edit skin settings',
+      'edit advanced skin settings',
+      'bypass node access',
+    ));
+    $this->drupalLogin($this->admin_user);
+  }
+
+  /**
+   * Tests block plugin.
+   */
+  function testBlock() {
+    // Enable user menu block for the first sidebar.
+    // @see http://drupal.org/node/913086
+    $default_theme = variable_get('theme_default', 'bartik');
+    db_merge('block')
+      ->key(array(
+        'theme' => $default_theme,
+        'module' => 'system',
+        'delta' => 'user-menu',
+      ))
+      ->fields(array(
+        'status' => 1,
+        'region' => 'sidebar_first',
+        'pages' => '',
+      ))
+      ->execute();
+
+    // Get front page.
+    $this->drupalGet('');
+
+    // Make sure our contextual link appears on the page.
+    $this->assertLinkByHref('admin/appearance/fusion/edit/nojs/block/system__user-menu/configure', 0, 'Contexual link to edit block\'s skin configuration was found.');
+  }
+
+  /**
+   * Tests comment plugin.
+   */
+  function testComment() {
+    // Create a node.
+    $node1 = $this->drupalCreateNode(array('type' => 'article'));
+
+    // Go to node.
+    $uri = entity_uri('node', $node1);
+    $this->drupalGet($uri['path']);
+
+    // Add a comment to the node. With bartik the contextual links won't
+    // display until there is at least one comment.
+    $edit = array(
+      'comment_body[und][0][value]' => $this->randomString(128),
+    );
+    $this->drupalPost(NULL, $edit, t('Save'));
+
+    // Make sure our contextual link appears on the page.
+    $this->assertLinkByHref('admin/appearance/fusion/edit/nojs/comment/article/configure', 0, 'Contexual link to edit comment\'s skin configuration was found.');
+  }
+
+  /**
+   * Tests node plugin.
+   */
+  function testNode() {
+    // Create a node.
+    $node = $this->drupalCreateNode(array('type' => 'article'));
+
+    // Go to node.
+    $uri = entity_uri('node', $node);
+    $this->drupalGet($uri['path']);
+
+    // Make sure our contextual link appears on the page.
+    $this->assertLinkByHref('admin/appearance/fusion/edit/nojs/node/article/configure', 0, 'Contexual link to edit node\'s skin configuration was found.');
+  }
+}
+
+/**
+ * Tests UI functionality for Block plugin.
+ */
+class FusionApplyUIPluginPanelsTestCase extends DrupalWebTestCase {
+  public static function getInfo() {
+    return array(
+      'name' => 'Plugins UI - Panels',
+      'description' => 'Tests Fusion Apply UI functionality for functionality plugin from Panels.',
+      'dependencies' => array('ctools', 'page_manager', 'panels', 'panels_node', 'panels_mini'),
+      'group' => 'Fusion Accelerator',
+    );
+  }
+
+  function setUp() {
+    parent::setUp(array('block', 'page_manager', 'panels_node', 'panels_mini', 'fusion_apply_ui_test', 'fusion_apply_rules'));
+
+    $this->admin_user = $this->drupalCreateUser(array(
+      'administer blocks',
+
+      'use page manager',
+      'administer page manager',
+
+      'create mini panels',
+      'administer mini panels',
+
+      'access contextual links',
+      'administer fusion',
+      'edit skin settings',
+      'edit advanced skin settings',
+      'bypass node access',
+    ));
+    $this->drupalLogin($this->admin_user);
+  }
+
+  /**
+   * Tests panels plugin.
+   */
+  function testPanelsDefault() {
+    // Test panels pages.
+    // Go to panel page.
+    $this->drupalGet('fusion_apply-ui-test-panel');
+
+    // Make sure our contextual link appears on the page.
+    $this->assertLinkByHref('admin/appearance/fusion/edit/nojs/panels/pane__1__1/configure', 0, "Contexual link to edit pane's skin configuration on panel page (stored in code) was found.");
+
+
+    $this->drupalGet('admin/structure/mini-panels');
+
+    // Test mini panels.
+    // Add the mini block to the sidebar.
+    $default_theme = variable_get('theme_default', 'bartik');
+    db_merge('block')
+      ->key(array(
+        'theme' => $default_theme,
+        'module' => 'panels_mini',
+        'delta' => 'fusion_apply_ui_test_mini_panel',
+      ))
+      ->fields(array(
+        'status' => 1,
+        'region' => 'sidebar_first',
+        'pages' => '',
+      ))
+      ->execute();
+
+    // Go front page.
+    $this->drupalGet('');
+
+    // Make sure our contextual link appears on the page.
+    // @todo Is there a better way to determine did and pid used for this panel?
+    $this->assertLinkByHref('admin/appearance/fusion/edit/nojs/panels/pane__2__2/configure', 0, 'Contexual link to edit pane\'s skin configuration on mini panel (stored in code) was found.');
+  }
+
+  /**
+   * Tests panels plugin.
+   */
+  function testPanelsDatabase() {
+    // Create a simple panel node.
+    $node = $this->drupalCreateNode(array(
+      'type' => 'panel',
+      'panels_node' => array(
+        'layout' => 'onecol',
+        'css_id' => '',
+        'pipeline' => 'standard',
+      ),
+    ));
+
+    // Add a block to our panel node.
+    $display = panels_load_display($node->panels_node['did']);
+    $pane = panels_new_pane('block', 'system-user-menu', TRUE);
+    $display->add_pane($pane, 'middle');
+    $this->assertTrue(panels_save_display($display), 'Block was successfully added to panel node.');
+
+    // Go to node.
+    $uri = entity_uri('node', $node);
+    $this->drupalGet($uri['path']);
+
+    // Make sure our contextual link appears on the page.
+    // @todo Is there a better way to determine did and pid used for this panel?
+    $this->assertLinkByHref('admin/appearance/fusion/edit/nojs/panels/pane__1__1/configure', 0, 'Contexual link to edit pane\'s skin configuration on panel node was found.');
+
+
+    // Test panels pages.
+    // Save page to DB.
+    $task = page_manager_get_task('page');
+    $handler = page_manager_load_task_handler($task, 'fusion_apply_ui_test', 'page_fusion_apply_ui_test_panel_context');
+    page_manager_save_task_handler($handler);
+
+    // Go to panel page.
+    $this->drupalGet('fusion_apply-ui-test-panel');
+
+    // Make sure our contextual link appears on the page.
+    $this->assertLinkByHref('admin/appearance/fusion/edit/nojs/panels/pane__2__2/configure', 0, "Contexual link to edit pane's skin configuration on panel page (stored in DB) was found.");
+
+
+    $this->drupalGet('admin/structure/mini-panels');
+
+    // Test mini panels.
+    // Save mini panel to DB.
+    $mini = panels_mini_load('fusion_apply_ui_test_mini_panel');
+    panels_mini_save($mini);
+
+    // Add the mini block to the sidebar.
+    $default_theme = variable_get('theme_default', 'bartik');
+    db_merge('block')
+      ->key(array(
+        'theme' => $default_theme,
+        'module' => 'panels_mini',
+        'delta' => 'fusion_apply_ui_test_mini_panel',
+      ))
+      ->fields(array(
+        'status' => 1,
+        'region' => 'sidebar_first',
+        'pages' => '',
+      ))
+      ->execute();
+
+    // Go front page.
+    $this->drupalGet('');
+
+    // Make sure our contextual link appears on the page.
+    // @todo Is there a better way to determine did and pid used for this panel?
+    $this->assertLinkByHref('admin/appearance/fusion/edit/nojs/panels/pane__3__3/configure', 0, 'Contexual link to edit pane\'s skin configuration on mini panel (stored in DB) was found.');
+  }
+}
+
+/**
+ * Tests UI functionality for Block plugin.
+ */
+class FusionApplyUIPluginViewsTestCase extends DrupalWebTestCase {
+  public static function getInfo() {
+    return array(
+      'name' => 'Plugins UI - Views',
+      'description' => 'Tests Fusion Apply UI functionality for functionality plugin from Views.',
+      'dependencies' => array('views', 'views_ui'),
+      'group' => 'Fusion Accelerator',
+    );
+  }
+
+  function setUp() {
+    parent::setUp(array('views_ui', 'fusion_apply_ui_test'));
+
+    $this->admin_user = $this->drupalCreateUser(array(
+      'administer views',
+      'access all views',
+
+      'access contextual links',
+      'administer fusion',
+      'edit skin settings',
+      'edit advanced skin settings',
+    ));
+    $this->drupalLogin($this->admin_user);
+  }
+
+  /**
+   * Tests views plugin.
+   */
+  function testViews() {
+    // Go to the view's page.
+    $this->drupalGet('fusion_apply-ui-test-view');
+
+    // Make sure our contextual link appears on the page.
+    $this->assertLinkByHref('admin/appearance/fusion/edit/nojs/views/fusion_apply_ui_test__page/configure', 0, "Contexual link to edit view's skin configuration was found.");
+  }
+}

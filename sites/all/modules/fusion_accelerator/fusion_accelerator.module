@@ -1,0 +1,893 @@
+<?php
+
+/**
+ * @file
+ * Provides grid generation and responsive layouts for Fusion themes.
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function fusion_accelerator_menu() {
+  $items['admin/appearance/fusion/custom_grid'] = array(
+    'title'            => 'Grid Tools',
+    'description'      => 'A set of tools for developing with the Fusion theme framework.',
+    'page callback'    => 'drupal_get_form',
+    'page arguments'   => array('fusion_accelerator_grid_form'),
+    'access arguments' => array('administer site configuration'),
+    'type'             => MENU_LOCAL_TASK,
+  );
+  return $items;
+}
+
+/**
+ * Form to input parameters of the grid.
+ */
+function fusion_accelerator_grid_form($form, $form_state) {
+
+  $form['grid'] = array(
+    '#title'          => t('Grid Parameters'),
+    '#description'    => t('This tool is helpful for expert Fusion themers who need to generate a custom grid file.  No settings will be altered by using this form.'),
+    '#type'           => 'fieldset',
+  );
+  $form['grid']['width'] = array(
+    '#default_value'  => isset($form_state['values']['width']) ? $form_state['values']['width'] : 960,
+    '#description'    => t('The total number of pixels of the grid.  This is the width of the theme.'),
+    '#maxlength'      => 5,
+    '#size'           => 4,
+    '#title'          => t('Width'),
+    '#type'           => 'textfield',
+    '#required'       => TRUE,
+  );
+  $form['grid']['units'] = array(
+    '#default_value'  => isset($form_state['values']['units']) ? $form_state['values']['units'] : 16,
+    '#description'    => t('The number of columns that should divide the full width of the grid.'),
+    '#maxlength'      => 3,
+    '#required'       => TRUE,
+    '#size'           => 2,
+    '#title'          => t('Units'),
+    '#type'           => 'textfield',
+  );
+  $form['grid']['gutter'] = array(
+    '#default_value'  => isset($form_state['values']['gutter']) ? $form_state['values']['gutter'] : 30,
+    '#description'    => t('The number of pixels that pad each grid is called the gutter.'),
+    '#maxlength'      => 3,
+    '#required'       => TRUE,
+    '#size'           => 2,
+    '#title'          => t('Gutter'),
+    '#type'           => 'textfield',
+  );
+  $form['grid']['fluid'] = array(
+    '#default_value'  => isset($form_state['values']['fluid']) ? TRUE : FALSE,
+    '#description'    => t('If the layout is marked as fluid, the grid widths will expand and contract according to the browser width.'),
+    '#title'          => t('Fluid layout'),
+    '#type'           => 'checkbox',
+  );
+  $form['results'] = array(
+    '#title'          => t('Results'),
+    '#type'           => 'fieldset',
+  );
+  $form['results']['grid_css'] = array(
+    '#default_value'  => isset($form_state['fusion']['css_grid_file']) ? $form_state['fusion']['css_grid_file'] : '',
+    '#description'    => t('Save your custom grid file to the css subfolder inside of your theme folder.'),
+    '#rows'           => '10',
+    '#title'          => 'Grid CSS file',
+    '#type'           => 'textarea',
+  );
+  $form['submit'] = array(
+    '#type'           => 'submit',
+    '#value'          => t('Generate components'),
+  );
+
+  return $form;
+}
+
+/**
+ * Generates the grid CSS and info file.
+ */
+function fusion_accelerator_grid_form_submit($form, &$form_state) {
+
+  // The FAPI caches a form after it has been generated once.  After submitting 
+  // the grid calculator form, we want to reload it with thesubmitted values, 
+  // along with the generated components in textareas. To do that, we have to 
+  // turn the cache off.
+  $form_state['rebuild'] = TRUE;
+  
+  $options = array();
+  $options['units'] = $form_state['values']['units'];
+  $options['gutter'] = $form_state['values']['gutter'];
+  $options['width'] = $form_state['values']['width'];
+  $options['fluid'] = $form_state['values']['fluid'];
+  $form_state['input']['grid_css'] = _fusion_accelerator_generate_grid_css($options);
+  $form_state['complete form']['grid']['width']['#value'] = 60;
+
+}
+
+/**
+ * Implements hook_form_system_theme_settings_alter().
+ */
+function fusion_accelerator_form_system_theme_settings_alter(&$form, &$form_state) {
+
+  //skip these changes on the global settings page
+  if(empty($form_state['build_info']['args'])){
+    return;
+  } 
+  $theme_name = $form_state['build_info']['args'][0];
+  $theme_data = list_themes();
+  
+  // Only add these options to Fusion themes.
+  if (!_fusion_accelerator_fusion_based($theme_data, $theme_name)) {
+    return;
+  } 
+
+  $width_options = fusion_core_get_width_options($theme_name);
+  $defaults = ($theme_name && isset($theme_data[$theme_name]->info['settings'])) ? $theme_data[$theme_name]->info['settings'] : array();
+
+  // Toggles responsive for the entire theme, not just for a single display.
+  $form['tnt_container']['general_settings']['theme_grid_config']['responsive_enabled'] = array(
+    '#type'           => 'radios',
+    '#title'          => t('Enable responsive'),
+    '#default_value'  => theme_get_setting('responsive_enabled', $theme_name),
+    '#options'        => array(
+      '1' => t('Yes - adapt the grid to various devices (recommended)'),
+      '0' => t('No - always design for the desktop browser'),
+      ),
+    '#weight'         => -5,
+  );
+
+  // Responsive layouts use generated CSS.  Need to know number of columns.
+  $responsive_column_options = array();
+  for ($i = 8; $i <= 60; $i++) {
+    $responsive_column_options[$i] = $i . t(' columns');
+  }
+  $form['tnt_container']['general_settings']['theme_grid_config']['responsive_columns'] = array(
+    '#type'           => 'select',
+    '#title'          => t('Number of columns in responsive grid'),
+    '#default_value'  => (theme_get_setting('responsive_columns', $theme_name)) ? theme_get_setting('responsive_columns', $theme_name) : 12,
+    '#options'        => $responsive_column_options,
+    '#states'         => array(
+                          'visible' => array(
+                            ':input[name=responsive_enabled]' => array('value' => '1')
+                         )),
+  );
+  $form['tnt_container']['general_settings']['theme_grid_config']['responsive_ie_shim'] = array(
+    '#type'           => 'checkbox',
+    '#title'          => t('Support IE 6-8'),
+    '#description'    => t('Loads the css3-mediaqueries.js library to provide simulated media query support for older versions of IE.'),
+    '#default_value'  => (theme_get_setting('responsive_ie_shim', $theme_name)) ? theme_get_setting('responsive_ie_shim', $theme_name) : TRUE,
+    '#states'         => array(
+                          'visible' => array(
+                            ':input[name=responsive_enabled]' => array('value' => '1')
+                         )),
+    '#weight'         => 20,
+  );
+
+  /**
+   * Layout: desktop
+   * Add gutter, width and media query for default layout.
+   */
+  $form['tnt_container']['general_settings']['theme_responsive_desktop']['#description'] = '';
+  $form['tnt_container']['general_settings']['theme_responsive_desktop']['sidebar_enabled'] = array(
+    '#type'           => 'checkbox',
+    '#title'          => t('Desktop layout enabled'),
+    '#default_value'  => theme_get_setting('sidebar_enabled', $theme_name),
+    '#weight'         => 0,
+  );
+  $form['tnt_container']['general_settings']['theme_responsive_desktop']['sidebar_grid_width'] = array(
+    '#type'           => 'textfield',
+    '#title'          => t('Grid width'),
+    '#maxlength'      => 6,
+    '#default_value'  => theme_get_setting('sidebar_grid_width', $theme_name),
+    '#description'    => t('The constrained width of the site.  Each grid unit will be the width divided by the total number of columns.'),
+  );
+  $form['tnt_container']['general_settings']['theme_responsive_desktop']['sidebar_gutter'] = array(
+    '#type'           => 'textfield',
+    '#title'          => t('Gutter'),
+    '#maxlength'      => 6,
+    '#default_value'  => theme_get_setting('sidebar_gutter', $theme_name),
+    '#description'    => t('The number of pixels between columns.  Use a numeric value.'),
+  );
+  $form['tnt_container']['general_settings']['theme_responsive_desktop']['sidebar_mquery'] = array(
+    '#type'           => 'textfield',
+    '#title'          => t('Media query'),
+    '#maxlength'      => 500,
+    '#default_value'  => theme_get_setting('sidebar_mquery', $theme_name),
+    '#description'    => t('The @media query for the desktop layout.'),
+  );
+
+  /**
+   * Layout: tablet
+   */
+  $form['tnt_container']['general_settings']['theme_responsive_tablet'] = array(
+    '#type'           => 'fieldset',
+    '#title'          => t('Layout: Tablet'),
+    '#description'    => t('These two layouts are optimized for resolutions that match the pixel
+      width of an iPad in landscape and portrait modes.  They also work for other devices with
+      similar browser widths, including laptop screens and other tablet devices.'),
+    '#weight'         => -5,
+  );
+
+  /* Landscape */
+  $form['tnt_container']['general_settings']['theme_responsive_tablet']['tab_landscape'] = array(
+    '#type'           => 'fieldset',
+    '#title'          => t('Landscape'),
+    '#description'    => t('<h3>Tablet Devices: Landscape</h3>'),
+    '#weight'         => 0,
+  );
+  $form['tnt_container']['general_settings']['theme_responsive_tablet']['tab_landscape']['sidebar_tablet_landscape_layout'] = array(
+    '#type'           => 'radios',
+    '#title'          => t('Sidebar layout'),
+    '#default_value'  => theme_get_setting('sidebar_tablet_landscape_layout', $theme_name),
+    '#options'        => array(
+      'sidebars-split'      => t('Split sidebars'),
+      'sidebars-both-first' => t('Both sidebars first'),
+      'sidebars-both-last'  => t('Both sidebars last'),
+    ),
+    '#attributes'     => array('class' => array('clearfix', 'responsive')),
+    '#weight'         => -5,
+  );
+  $form['tnt_container']['general_settings']['theme_responsive_tablet']['tab_landscape']['sidebar_tablet_landscape_enabled'] = array(
+    '#type'           => 'checkbox',
+    '#title'          => t('Landscape layout for tablets enabled'),
+    '#default_value'  => theme_get_setting('sidebar_tablet_landscape_enabled', $theme_name),
+    '#weight'         => 0,
+  );
+  // @todo - add sidebar widths once "adjusted regions" have been removed.
+  /*
+  $form['tnt_container']['general_settings']['theme_responsive_tablet']['tab_landscape']['sidebar_tablet_landscape_first_width'] = array(
+    '#type'           => 'select',
+    '#title'          => t('First sidebar width'),
+    '#default_value'  => theme_get_setting('sidebar_tablet_landscape_first_width', $theme_name),
+    '#options'        => $width_options,
+  );
+  $form['tnt_container']['general_settings']['theme_responsive_tablet']['tab_landscape']['sidebar_tablet_landscape_first_width']['#options'][$defaults['sidebar_tablet_landscape_first_width']] .= t(' (default)');
+  $form['tnt_container']['general_settings']['theme_responsive_tablet']['tab_landscape']['sidebar_tablet_landscape_second_width'] = array(
+    '#type'           => 'select',
+    '#title'          => t('Second sidebar width'),
+    '#default_value'  => theme_get_setting('sidebar_tablet_landscape_second_width', $theme_name),
+    '#options'        => $width_options,
+  );
+  $form['tnt_container']['general_settings']['theme_responsive_tablet']['tab_landscape']['sidebar_tablet_landscape_second_width']['#options'][$defaults['sidebar_tablet_landscape_second_width']] .= t(' (default)');
+  */
+  // Gutter, width and media query.
+  $form['tnt_container']['general_settings']['theme_responsive_tablet']['tab_landscape']['sidebar_tablet_landscape_grid_width'] = array(
+    '#type'           => 'textfield',
+    '#title'          => t('Grid width'),
+    '#maxlength'      => 6,
+    '#default_value'  => theme_get_setting('sidebar_tablet_landscape_grid_width', $theme_name),
+    '#description'    => t('The constrained width of the site.  Each grid unit will be the width divided by the total number of columns.'),
+  );
+  $form['tnt_container']['general_settings']['theme_responsive_tablet']['tab_landscape']['sidebar_tablet_landscape_gutter'] = array(
+    '#type'           => 'textfield',
+    '#title'          => t('Gutter'),
+    '#maxlength'      => 6,
+    '#default_value'  => theme_get_setting('sidebar_tablet_landscape_gutter', $theme_name),
+    '#description'    => t('The number of pixels between columns.  Use a numeric value.'),
+  );
+  $form['tnt_container']['general_settings']['theme_responsive_tablet']['tab_landscape']['sidebar_tablet_landscape_mquery'] = array(
+    '#type'           => 'textfield',
+    '#title'          => t('Media query'),
+    '#maxlength'      => 500,
+    '#default_value'  => theme_get_setting('sidebar_tablet_landscape_mquery', $theme_name),
+    '#description'    => t('The @media query for the tablet landscape layout.'),
+  );
+
+  /* Portrait */
+  $form['tnt_container']['general_settings']['theme_responsive_tablet']['tab_portrait'] = array(
+    '#type'           => 'fieldset',
+    '#title'          => t('Landscape'),
+    '#description'    => t('<h3>Tablet Devices: Portrait</h3>'),
+    '#weight'         => 5,
+  );
+  $form['tnt_container']['general_settings']['theme_responsive_tablet']['tab_portrait']['sidebar_tablet_portrait_layout'] = array(
+    '#type'           => 'radios',
+    '#title'          => t('Sidebar layout'),
+    '#default_value'  => theme_get_setting('sidebar_tablet_portrait_layout', $theme_name),
+    '#options'        => array(
+      'sidebars-split'      => t('Split sidebars'),
+      'sidebars-both-first' => t('Both sidebars first'),
+      'sidebars-both-last'  => t('Both sidebars last'),
+    ),
+    '#attributes'     => array('class' => array('clearfix', 'responsive')),
+    '#weight'         => -5,
+  );
+  $form['tnt_container']['general_settings']['theme_responsive_tablet']['tab_portrait']['sidebar_tablet_portrait_enabled'] = array(
+    '#type'           => 'checkbox',
+    '#title'          => t('Portrait layout for tablets enabled'),
+    '#default_value'  => theme_get_setting('sidebar_tablet_portrait_enabled', $theme_name),
+    '#weight'         => 0,
+  );
+  // Sidebar widths.
+  // @todo - add sidebar widths once "adjusted regions" have been removed.
+  /*
+  $form['tnt_container']['general_settings']['theme_responsive_tablet']['tab_portrait']['sidebar_tablet_portrait_first_width'] = array(
+    '#type'           => 'select',
+    '#title'          => t('First sidebar width'),
+    '#default_value'  => theme_get_setting('sidebar_tablet_portrait_first_width', $theme_name),
+    '#options'        => $width_options,
+  );
+  $form['tnt_container']['general_settings']['theme_responsive_tablet']['tab_portrait']['sidebar_tablet_portrait_first_width']['#options'][$defaults['sidebar_tablet_portrait_first_width']] .= t(' (default)');
+  $form['tnt_container']['general_settings']['theme_responsive_tablet']['tab_portrait']['sidebar_tablet_portrait_second_width'] = array(
+    '#type'           => 'select',
+    '#title'          => t('Second sidebar width'),
+    '#default_value'  => theme_get_setting('sidebar_tablet_portrait_second_width', $theme_name),
+    '#options'        => $width_options,
+  );
+  $form['tnt_container']['general_settings']['theme_responsive_tablet']['tab_portrait']['sidebar_tablet_portrait_second_width']['#options'][$defaults['sidebar_tablet_portrait_second_width']] .= t(' (default)');
+  */
+  // Gutter, width and media query.
+  $form['tnt_container']['general_settings']['theme_responsive_tablet']['tab_portrait']['sidebar_tablet_portrait_grid_width'] = array(
+    '#type'           => 'textfield',
+    '#title'          => t('Grid width'),
+    '#maxlength'      => 6,
+    '#default_value'  => theme_get_setting('sidebar_tablet_portrait_grid_width', $theme_name),
+    '#description'    => t('The constrained width of the site.  Each grid unit will be the width divided by the total number of columns.'),
+  );
+  $form['tnt_container']['general_settings']['theme_responsive_tablet']['tab_portrait']['sidebar_tablet_portrait_gutter'] = array(
+    '#type'           => 'textfield',
+    '#title'          => t('Gutter'),
+    '#maxlength'      => 6,
+    '#default_value'  => theme_get_setting('sidebar_tablet_portrait_gutter', $theme_name),
+    '#description'    => t('The number of pixels between columns.  Use a numeric value.'),
+  );
+  $form['tnt_container']['general_settings']['theme_responsive_tablet']['tab_portrait']['sidebar_tablet_portrait_mquery'] = array(
+    '#type'           => 'textfield',
+    '#title'          => t('Media query'),
+    '#maxlength'      => 500,
+    '#default_value'  => theme_get_setting('sidebar_tablet_portrait_mquery', $theme_name),
+    '#description'    => t('The @media query for the tablet portrait layout.'),
+  );
+
+  /**
+   * Layout: mobile
+   */
+  $form['tnt_container']['general_settings']['theme_responsive_phone'] = array(
+    '#type'           => 'fieldset',
+    '#title'          => t('Layout: Mobile'),
+    '#description'    => t('Low resolution devices will drop sidebars below the main content region.  No options are available for sidebar layout or sizing.'),
+    '#weight'         => -4,
+  );
+  $form['tnt_container']['general_settings']['theme_responsive_phone']['sidebar_phone_landscape_layout'] = array(
+    '#type'           => 'radios',
+    '#title'          => t('Sidebar layout'),
+    '#default_value'  => theme_get_setting('sidebar_phone_landscape_layout', $theme_name),
+    '#options'        => array(
+      'sidebars-drop' => t('Split sidebars'),
+    ),
+    '#attributes'     => array(
+      'class' => array('clearfix', 'responsive')
+    ),
+    '#weight'         => -5,
+  );
+  $form['tnt_container']['general_settings']['theme_responsive_phone']['sidebar_phone_landscape_enabled'] = array(
+    '#type'           => 'checkbox',
+    '#title'          => t('Mobile layout enabled'),
+    '#default_value'  => theme_get_setting('sidebar_phone_landscape_enabled', $theme_name),
+    '#weight'         => 0,
+  );
+  // Gutter, width and media query.
+  $form['tnt_container']['general_settings']['theme_responsive_phone']['sidebar_phone_landscape_grid_width'] = array(
+    '#type'           => 'textfield',
+    '#title'          => t('Grid width'),
+    '#maxlength'      => 6,
+    '#default_value'  => theme_get_setting('sidebar_phone_landscape_grid_width', $theme_name),
+    '#description'    => t('The constrained width of the site.  Each grid unit will be the width divided by the total number of columns.'),
+  );
+  $form['tnt_container']['general_settings']['theme_responsive_phone']['sidebar_phone_landscape_gutter'] = array(
+    '#type'           => 'textfield',
+    '#title'          => t('Gutter'),
+    '#maxlength'      => 6,
+    '#default_value'  => theme_get_setting('sidebar_phone_landscape_gutter', $theme_name),
+    '#description'    => t('The number of pixels between columns.  Use a numeric value.'),
+  );
+  $form['tnt_container']['general_settings']['theme_responsive_phone']['sidebar_phone_landscape_mquery'] = array(
+    '#default_value'  => theme_get_setting('sidebar_phone_landscape_mquery', $theme_name),
+    '#description'    => t('The @media query for the tablet portrait layout.'),
+    '#maxlength'      => 500,
+    '#title'          => t('Media query'),
+    '#type'           => 'textfield',
+  );
+
+  // Generates grid file upon save.
+  $form['#submit'][] = '_fusion_accelerator_theme_settings_save';
+}
+
+/**
+ * Callback function upon saving theme settings.
+ * If responsive is enabled, will initiate grid generation.
+ */
+function _fusion_accelerator_theme_settings_save($form, &$form_state) {
+  
+  $values = $form_state['values'];
+  if (!$values['responsive_enabled']) {
+    // Only generate a grid file if responsive is enabled. Non-responsive 
+    // layouts will rely on static files found either in fusion_core/css or the 
+    // subtheme's css folder.
+    return;
+  }
+  $theme = $form_state['build_info']['args'][0];
+  $responsive_options = _fusion_accelerator_get_responsive_options($theme);
+  foreach ($responsive_options as $op) {
+    if (isset($values[$op])) $options[$op] = $values[$op];
+  }
+  $options['theme'] = $theme;
+  $options['units'] = $values['responsive_columns'];
+  $options['responsive'] = TRUE;
+
+  _fusion_accelerator_save_grid($options);
+  
+}
+
+/**
+ * Returns a list of theme setting names.
+ */
+function _fusion_accelerator_get_responsive_options($theme) {
+  $settings = array(
+    'responsive_enabled',
+    'responsive_ie_shim',
+    'responsive_columns',
+    'responsive_displays',
+    'sidebar_enabled',
+  );
+  $displays = theme_get_setting('responsive_displays', $theme);
+  foreach ($displays as $display) {
+    $settings[] = $display . '_enabled';
+    $settings[] = $display . '_layout';
+    $settings[] = $display . '_first_width';
+    $settings[] = $display . '_second_width';
+    $settings[] = $display . '_grid_width';
+    $settings[] = $display . '_gutter';
+    $settings[] = $display . '_mquery';
+    $settings[] = $display . '_mask';
+  }
+  return $settings;
+}
+
+/**
+ * Generates grid file used by responsive layouts, and saves to file system.
+ * Clears CSS cache upon saving.
+ *
+ * @param $options
+ *    An associative array.  See _fusion_accelerator_generate_grid_css() for
+ *    full list of required/optional keys.  In addition, these keys are used:
+ *    - "theme" (required): the machine name of the theme that the grid file is 
+ *      generated for.
+ *    - options prefixed with the machine name of a display
+ */
+function _fusion_accelerator_save_grid($options) {
+
+  $output = array();
+  $theme = $options['theme'];
+  $displays = theme_get_setting('responsive_displays', $theme);
+  foreach ($displays as $display) {
+    
+    // Bypass any disabled layouts.
+    if (!$options[$display . '_enabled']) {
+      continue;
+    }
+
+    // Keys for displays are the same as those used in $options, but are 
+    // prefixed with the machine name of the display.  For example, gutter
+    // becomes sidebar_desktop_gutter for the display "sidebar_desktop".
+    $display_options['responsive'] = $options['responsive'];
+    $display_options['units'] = $options['units'];
+    $display_options['gutter'] = $options[$display . '_gutter'];
+    $display_options['width'] = $options[$display . '_grid_width'];
+    $display_options['layout'] = $options[$display . '_layout'];
+    $display_options['mobile'] = (!isset($options[$display . '_grid_width']) || !is_numeric($options[$display . '_grid_width'])) ? TRUE : FALSE;
+    $display_options['grid_color'] = theme_get_setting($display . '_mask', $theme);
+    $display_options['display'] = $display;
+    $output[] = '@media ' . $options[$display . '_mquery'] . ' {';
+    $output[] = _fusion_accelerator_generate_grid_css($display_options);
+    $output[] = '}' . "\n";
+    
+  }
+  $output = implode("\n", $output);
+
+  // Credit: adaptivethemes.  Copied, pasted, reworked.
+  $file = $theme . '.responsive.grid.css';
+  $path = "public://fusion";
+  file_prepare_directory($path, FILE_CREATE_DIRECTORY);
+  $filepath = $path . '/' . $file;
+  file_save_data($output, $filepath, FILE_EXISTS_REPLACE);
+
+  // Set variables so we can retrive them later to load the css file.
+  variable_set($theme . '_responsive_path', $path);
+  variable_set($theme . '_responsive_css', $file);
+
+  drupal_clear_css_cache();
+}
+
+/**
+ * Outputs the CSS for a grid file.
+ *
+ * @param $options
+ *    An associative array containing: 
+ *    - units: (required) (int) number of columns.
+ *    - gutter: (required) (int) number of pixels in the gutter.
+ *    - width: (required) (int) total width of the grid in pixels.
+ *    
+ *    Optional keys:
+ *    - fluid: (boolean) for non-responsive layouts, set to true if grid should 
+ *      be based on %.
+ *    - responsive: (boolean)
+ *    - mobile: (boolean) TRUE if layout contains no sidebars or width limits.
+ *      used in mobile layouts where blocks and regions are set to 100% and 
+ *      "drop down".
+ *    - is_ie: (boolean) TRUE if css should be altered slightly for older 
+ *      versions of IE.
+ *    - display: (string) machine name of the layout, eg 'sidebar_tablet_portrait'
+ *    - mask: (string) color used for grid overlay, eg 'rgba(220,220,70,.1)'
+ *
+ * @param (boolean) $fluid
+ *    grid widths should be percentages if TRUE
+ *
+ * @return css
+ */
+function _fusion_accelerator_generate_grid_css($options) {
+
+  // Break apart options into convenience variables.
+  $grid_units = $options['units'];
+  $grid_gutter = $options['gutter'];
+  $grid_width = $options['width'];
+  $responsive = (isset($options['responsive']) && $options['responsive']) ? TRUE : FALSE;
+  $mobile = (isset($options['mobile']) && $options['mobile']) ? TRUE : FALSE;
+  $fluid = (isset($options['fluid']) && $options['fluid']) ? TRUE : FALSE;
+
+  $lf = "\n";
+  $tab = '  ';
+  $output = array();
+  $grid_width_label = ($fluid) ? 'fluid' : $grid_width;
+  $grid_width_unit = ($fluid) ? '' : 'px';
+  $grid_width = ($fluid) ? '100' : $grid_width;
+
+  $width_label = ($mobile) ? 'Mobile layout' : "{$grid_width_label}{$grid_width_unit} width";
+  $output[] = '/**';
+  if (!$responsive) $output[] = " * @file grid{$grid_units}-{$grid_width_label}.css";
+  $output[] = " * Fusion Grid Layout - {$width_label}, {$grid_units} column grid, {$grid_gutter}px gutters";
+  $output[] = " * -------------------------------------------------------------------- */" . $lf;
+
+  $output[] = "/* grid widths */";
+  $output[] = _fusion_accelerator_grid_width_css($options);
+  if ($fluid) {
+    $options['is_ie'] = TRUE;
+    $output[] = '/* grid widths, minus 0.1% to prevent float under in IE6 & IE7 */';
+    $output[] = _fusion_accelerator_grid_width_css($options);
+    $options['is_ie'] = FALSE;
+  }
+
+  if (!$mobile) {
+    $output[] = "/* block indents */";
+    $output[] = _fusion_accelerator_grid_indent_css($options) . $lf;
+    if ($fluid) {
+      $options['is_ie'] = TRUE;
+      $output[] = "/* block indents, minus 0.1% to prevent float under in IE6 & IE7 */";
+      $output[] = _fusion_accelerator_grid_indent_css($options) . $lf;
+      $options['is_ie'] = FALSE;
+    }
+  }
+
+  $output[] = "/* gutters (2 x margin) */";
+  $output[] = _fusion_accelerator_grid_gutter_css($grid_gutter) . $lf;
+
+  if (!$fluid) {
+    // Minimum width is set to the fixed width, except for mobile.
+    $output[] = _fusion_accelerator_grid_full_width_css($options);
+  }
+  else {
+    // Set a reasonable minimum width for fluid layouts.
+    $fluid_options = $options;
+    $fluid_options['width'] = 780;
+    $output[] = _fusion_accelerator_grid_full_width_css($fluid_options);
+    $output[] = _fusion_accelerator_fluid_css($fluid_options);
+  }
+
+  // Color code grid masks.
+  $output[] = _fusion_accelerator_color_code_grids($options);
+
+  // For responsive grids, position the sidebars and provide support for Fusion Labels.
+  if ($responsive) {
+    $output[] = _fusion_accelerator_sidebar_locations($options);
+    $output[] = _fusion_accelerator_grid_debug($options);
+  }
+
+  $output = implode("\n", $output);
+  return $output;
+}
+
+/**
+ * CSS added to label the currently selected grid for administrators.
+ */
+function _fusion_accelerator_grid_debug($options) {
+  $tab = '  ';
+  $output = array();
+  $output[] = '#label_' . $options['display'] . ' {';
+  $output[] = $tab . 'display: block;';
+  $output[] = '}';
+  $output = implode("\n", $output);
+  return $output;
+}
+
+/**
+ * Position sidebars.
+ */
+function _fusion_accelerator_sidebar_locations($options) {
+  $output = array();
+  $output[] = "/* Sidebar layout */";
+
+  switch ($options['layout']) {
+    case 'sidebars-both-first':
+      $output[] = '#content-group { float: right; }';
+      break;
+
+    case 'sidebars-both-last':
+      $output[] = '#sidebar-first { float: right; }';
+      break;
+
+    // No alterations are needed for sidebar-split.
+    case 'sidebars-split':
+    default:
+      return;
+  }
+
+  $output = implode("\n", $output);
+  return $output;
+}
+
+/**
+ * Overrides default color for grid overlay.
+ * @param $options
+ *    @see _fusion_accelerator_generate_grid_css().
+ * @return
+ *    CSS.
+ */
+function _fusion_accelerator_color_code_grids($options) {
+
+  // Default to blue.
+  $grid_color = (isset($options['grid_color'])) ? $options['grid_color'] : "rgba(0, 73, 225, .12)";
+
+  $tab = "  ";
+  $output = array();
+
+  $output[] = "#grid-mask-overlay .block .gutter {";
+  $output[] = $tab . "background-color: " . $grid_color . ";";
+  $output[] = $tab . "outline: none;";
+  $output[] = "}";
+
+  return implode("\n", $output);
+}
+
+/**
+ * Generates fluid grid.
+ * @param $options
+ *    @see _fusion_accelerator_generate_grid_css().
+ * @return
+ *    CSS.
+ */
+function _fusion_accelerator_fluid_css($options) {
+
+  $grid_units = $options['units'];
+
+  $lf = "\n";
+  $tab = "  ";
+  $output = "";
+
+  $output .= "/* region max-min width */" . $lf;
+  $output .= ".region {" . $lf;
+  $output .= $tab . "max-width: 1320px;   /* 960px + 360px */" . $lf;
+  $output .= $tab . "min-width: 780px;    /* 960px - 180px */" . $lf;
+  $output .= "}" . $lf . $lf;
+
+  $output .= "/* allow nested regions to be smaller */" . $lf;
+  $output .= ".region.nested {" . $lf;
+  $output .= $tab . "min-width: 0;" . $lf;
+  $output .= "}" . $lf . $lf;
+
+  $output .= "/* theme setting: set fluid grid width on top-level full-width elements */" . $lf;
+  $output .= ".fluid-100 .full-width .grid{$grid_units}-{$grid_units} {width: 100%;}" . $lf;
+  $output .= ".fluid-95 .full-width .grid{$grid_units}-{$grid_units} {width: 95%;}" . $lf;
+  $output .= ".fluid-90 .full-width .grid{$grid_units}-{$grid_units} {width: 90%;}" . $lf;
+  $output .= ".fluid-85 .full-width .grid{$grid_units}-{$grid_units} {width: 85%;}" . $lf . $lf;
+
+  $output .= "/* now reset all nested full-width elements back to 100% */" . $lf;
+  $output .= "#page .grid{$grid_units}-{$grid_units} .grid{$grid_units}-{$grid_units} {width: 100%;}" . $lf;
+
+  return $output;
+
+}
+
+/**
+ * Sets the body width of fixed with grids.
+ *
+ * @param int
+ *    Total width in pixels (eg: 960).
+ * @return string
+ *    CSS.
+ */
+function _fusion_accelerator_grid_full_width_css($options) {
+
+  // Do not set grid width for mobile.
+  if (isset($options['mobile']) && $options['mobile']) return;
+
+  $grid_width = $options['width'];
+  $lf = "\n";
+  $tab = "  ";
+
+  $output = '/* page min width */' . $lf;
+  $output .= "body," . $lf;
+  $output .= "div.full-width {" . $lf;
+  $output .= $tab . "min-width: {$grid_width}px;" . $lf;
+  $output .= "}" . $lf;
+
+  return $output;
+}
+
+/**
+ * Sets the width of each grid column.
+ *
+ * @param $options
+ *    @see fusion_accelerator_generate_grid_css().
+ * @return (string)
+ *    CSS.
+ */
+function _fusion_accelerator_grid_width_css($options) {
+
+  // Convenience variables.
+  $grid_units = $options['units'];
+  $grid_gutter = $options['gutter'];
+  $grid_width = $options['width'];
+  $fluid = (isset($options['fluid']) && $options['fluid']) ? TRUE : FALSE;
+  $is_ie = (isset($options['is_ie']) && $options['is_ie']) ? TRUE : FALSE;
+  $mobile = (isset($options['mobile']) && $options['mobile']) ? TRUE : FALSE;
+
+  $unit = ($fluid) ? '%' : 'px';
+  $unit_width = _fusion_accelerator_unit_width($grid_units, $grid_width);
+  $output = '';
+
+  if ($is_ie) {
+    // Subtract .1% from widths for IE6, IE7 on fluid layouts
+    for ($i = 1; $i <= $grid_units; $i++) {
+      $this_grid_width = $i * $unit_width;
+      // Fluid percentages are given 2 decimal points.
+      $this_grid_width = round($this_grid_width, 2) - .1;
+      $output .= '.ie6 .grid' . $grid_units . '-' . $i .
+        ', .ie7 .grid'  . $grid_units . '-' . $i .
+        ' {width: ' . $this_grid_width . $unit . ';}' . "\n";
+    }
+  }
+  elseif ($mobile) {
+    $mobile_units = array();
+    for ($i = 1; $i <= $grid_units; $i++) {
+      $mobile_units[] = 'body .grid' . $grid_units . '-' . $i;
+    }
+    $output .= implode(",\n", $mobile_units) . " {" . "\n";
+    $output .= "  clear: both;" . "\n";
+    $output .= "  width: 100%;" . "\n";
+    $output .= "}" . "\n";
+  }
+  else {
+    for ($i = 1; $i <= $grid_units; $i++) {
+      $this_grid_width = $i * $unit_width;
+      // Fluid percentages are given 2 decimal points.
+      $this_grid_width = ($fluid) ? round($this_grid_width, 2) : floor($this_grid_width);
+      $output .= 'body .grid' . $grid_units . '-' . $i . ' {width: ' . $this_grid_width . $unit . ';}' . "\n";
+    }
+  }
+
+  return $output;
+
+}
+
+/**
+ * @param $options
+ *    @see fusion_accelerator_generate_grid_css().
+ * @return
+ *    CSS.
+ */
+function _fusion_accelerator_grid_indent_css($options) {
+
+  // Break apart options into convenience variables.
+  $grid_units = $options['units'];
+  $grid_gutter = $options['gutter'];
+  $grid_width = $options['width'];
+  $responsive = (isset($options['responsive']) && $options['responsive']) ? TRUE : FALSE;
+  $mobile = (isset($options['mobile']) && $options['mobile']) ? TRUE : FALSE;
+  $fluid = (isset($options['fluid']) && $options['fluid']) ? TRUE : FALSE;
+  $is_ie = (isset($options['is_ie']) && $options['is_ie']) ? TRUE : FALSE;
+
+  $unit = ($fluid) ? '%' : 'px';
+  $unit_width = _fusion_accelerator_unit_width($grid_units, $grid_width);
+  $output = '';
+
+  if ($is_ie) {
+    for ($i = 1; $i <= $grid_units - 1; $i++) {
+      $this_grid_width = $i * $unit_width;
+      // Fluid percentages are given 2 decimal points.
+      $this_grid_width = round($this_grid_width, 2) - .1;
+      $output .= '.ie6 .grid' . $grid_units . '-indent-' . $i . ', ' .
+        '.ie7 .grid' . $grid_units . '-indent-' . $i .
+        ' {margin-left: ' . $this_grid_width . $unit . ';}' . "\n";
+    }
+  }
+  else {
+    for ($i = 1; $i <= $grid_units - 1; $i++) {
+      $this_grid_width = $i * $unit_width;
+      // Fluid percentages are given 2 decimal points.
+      $this_grid_width = ($fluid) ? round($this_grid_width, 2) : floor($this_grid_width);
+      $output .= 'body .grid' . $grid_units . '-indent-' . $i . ' {margin-left: ' . $this_grid_width . $unit . ';}' . "\n";
+    }
+  }
+  return $output;
+}
+
+/**
+ * @param (int) $gutter_width
+ *    Gutter in pixels (eg: 30).
+ * @return string
+ *    CSS.
+ */
+function _fusion_accelerator_grid_gutter_css($gutter_width) {
+  $output = '';
+  $lf = "\n";
+  $tab = "  ";
+
+  $output .= '.gutter {' . $lf;
+  $output .= $tab . 'margin-left: ' . floor($gutter_width / 2)  . 'px;' . $lf;
+  $output .= $tab . 'margin-right: ' . ceil($gutter_width / 2) . 'px;' . $lf;
+  $output .= '}' . $lf;
+  return $output;
+}
+
+/**
+ * @param (int) $gutter_width
+ *    Total width in pixels (eg: 960).
+ * @return string
+ *    CSS.
+ */
+function _fusion_accelerator_grid_fix_css($gutter_width) {
+  $output = '';
+  $lf = "\n";
+  $tab = "  ";
+
+  $output .= '#content-content .node .first .inner {' . $lf;
+  $output .= $tab . "margin-right: {$gutter_width}px;" . $lf;
+  $output .= '}' . $lf;
+  return $output;
+}
+
+/**
+ * @param (int) $grid_units
+ *    Number of columns that comprises the grid (eg: 16).
+ * @param (int) $grid_width
+ *    Pixel width of grid (eg: 960).
+ * @return (int)
+ *    Width of a single grid unit.
+ */
+function _fusion_accelerator_unit_width($grid_units, $grid_width) {
+  return $grid_width / $grid_units;
+}
+
+/**
+ * @param (array)
+ *   results of list_themes()
+ * @param (string)
+ *   name of the current theme
+ */
+ 
+
+function _fusion_accelerator_fusion_based($theme_data, $theme_name) {
+  if(isset($theme_data[$theme_name]->base_theme)) {
+    $base_theme = $theme_data[$theme_name]->base_theme;
+    if($base_theme == 'fusion_core') {
+      return TRUE;
+    } else {     
+      return _fusion_accelerator_fusion_based($theme_data, $base_theme);
+    }
+  } else {
+    if($theme_name == 'fusion_core') {
+      return TRUE;
+    } else {
+      return FALSE;
+    }
+  }
+}

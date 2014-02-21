@@ -1,0 +1,13 @@
+name = Responsive layouts for IE 6-8
+description = Provides simulated support for CSS media queries in Internet Explorer versions 6-8.
+core = 7.x
+engine = phptemplate
+package = Fusion Accelerator
+dependencies[] = libraries
+
+; Information added by drupal.org packaging script on 2012-03-23
+version = "7.x-2.0-beta1"
+core = "7.x"
+project = "fusion_accelerator"
+datestamp = "1332518152"
+

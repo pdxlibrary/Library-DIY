@@ -1,0 +1,118 @@
+<?php
+/**
+ * @file
+ * Install file for the custom_breadcrumbs_views module.
+ */
+
+/**
+ * Implements hook_install().
+ */
+function custom_breadcrumbs_views_install() {
+
+  // Search for Views breadcrumbs in existing {custom_breadcrumb} and move to new table.
+  drupal_set_message('Looking for views breadcrumbs to copy from {custom_breadcrumb}...');
+  $result = db_query("SELECT * FROM {custom_breadcrumb} WHERE node_type = :node_type", array(':node_type' => 'Views Page'));
+  $found = 0;
+  foreach ($result as $breadcrumb) {
+    $start = strpos($breadcrumb->paths, "\n");
+    $views_path = drupal_substr($breadcrumb->paths, 0, $start);
+    $title = drupal_substr($breadcrumb->titles, strpos($breadcrumb->titles, "\n") + 1);
+    $newpath = drupal_substr($breadcrumb->paths, strpos($breadcrumb->paths, "\n") + 1);
+
+    $id = db_insert('custom_breadcrumbs_views')
+      ->fields(array(
+        'titles' => $title,
+        'paths' => $newpath,
+        'visibility_php' => $breadcrumb->visibility_php,
+        'views_path' => $views_path,
+        'set_active_menu' => $breadcrumb->set_active_menu,
+        'language' => $breadcrumb->language,
+        ))
+      ->execute();
+    drupal_set_message('copied path ' . $views_path);
+    ++$found;
+  }
+  if ($found > 0) {
+    drupal_set_message(format_plural($found, 'Copied 1 breadcrumb.', 'Copied @count breadcrumbs.'));
+    drupal_set_message(t('You can now delete the old views breadcrumb from <a href="@link">admin/build/custom_breadcrumbs</a>. They will be listed with title Views Page and page type node.', array('@link' => url('admin/structure/custom_breadcrumbs'))));
+  }
+  else {
+    drupal_set_message(t('No views breadcrumbs were found in {custom_breadcrumbs}'));
+  }
+}
+
+/**
+ * Implements hook_schema().
+ */
+function custom_breadcrumbs_views_schema() {
+  $schema['custom_breadcrumbs_views'] = array(
+    'description' => 'Stores custom breadcrumb trail overrides for views pages.',
+    'fields' => array(
+      'bid' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'Unique identifier for the {custom_breadcrumbs_views}.',
+      ),
+      'name' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => FALSE,
+        'description' => 'An optional name for the custom breadcrumb.',
+      ),
+      'titles' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'A return-delimited list of titles for the breadcrumb links.',
+      ),
+      'paths' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+        'description' => 'A return-delimited list of url paths for the breadcrumb links.',
+      ),
+      'visibility_php' => array(
+        'type' => 'text',
+        'not null' => TRUE,
+        'size' => 'medium',
+        'description' => 'An optional PHP snippet to control the {custom_breadcrumbs_views} visibility.',
+      ),
+      'views_path' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'description' => 'Path to the view for this custom breadcrumb.',
+      ),
+      'language' => array(
+        'type' => 'varchar',
+        'length' => 12,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The language this breadcrumb is for; if blank, the breadcrumb will be used for unknown languages.',
+      ),
+    ),
+    'indexes' => array(
+      'language' => array('language'),
+      'vpath_language' => array('views_path', 'language'),
+    ),
+    'primary key' => array('bid'),
+  );
+  return $schema;
+}
+
+/**
+ * Adds name field for improved organization of breadcrumbs.
+ * Remove set_active_menu field because it is no longer used.
+ * Adds indices to custom_breadcrumb table to improve performance.
+ */
+function custom_breadcrumbs_views_update_6200() {
+  db_add_index('language', array('language'));
+  db_add_index('vpath_language', array('views_path', 'language'));
+  db_add_field('name', array('type' => 'varchar', 'length' => 128, 'NOT NULL' => FALSE, 'description' => 'An optional name for the custom breadcrumb.'));
+  db_drop_field('set_active_menu');
+}
+
+
+

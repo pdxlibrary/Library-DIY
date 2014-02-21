@@ -1,0 +1,22 @@
+<?php
+
+/**
+ * @file
+ * Fusion Apply UI testing module.
+ */
+
+/**
+ * Implementation of hook_ctools_plugin_api().
+ */
+function fusion_apply_ui_test_ctools_plugin_api($module, $api) {
+  if (($module == 'page_manager' && $api == 'pages_default') || ($module == 'panels_mini' && $api == 'panels_default')) {
+    return array('version' => 1);
+  }
+}
+
+/**
+ * Implementation of hook_views_api().
+ */
+function fusion_apply_ui_test_views_api() {
+  return array('api' => 3);
+}

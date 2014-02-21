@@ -1,0 +1,76 @@
+<?php
+
+/**
+ * @file
+ * Provides support for media queries in Internet Explorer versions 6-8.
+ */
+
+/**
+ * Implements hook_libraries_info().
+ */
+function fusion_responsive_ie_libraries_info() {
+
+  $libraries['css3-mediaqueries'] = array(
+    'name' => 'css3-mediaqueries.js',
+    'vendor url' => 'http://code.google.com/p/css3-mediaqueries-js/',
+    'version' => '1.0',
+    'download url' => 'http://code.google.com/p/css3-mediaqueries-js/downloads/list',
+    'files' => array(
+      'js' => array('css3-mediaqueries.js' => array(
+        'every_page' => TRUE,
+        'group' => JS_LIBRARY,
+        'preprocess' => 0,
+        'scope' => 'header',
+        'type' => 'file',
+        'weight' => -999,
+      )),
+    ),
+  );
+  return $libraries;
+}
+
+/**
+ * Implements hook_init().
+ */
+function fusion_responsive_ie_init() {
+
+  $default_theme = variable_get('theme_default');
+  if (theme_get_setting('responsive_enabled', $default_theme) && theme_get_setting('responsive_ie_shim', $default_theme)) {
+    $is_admin_page = (strpos($_GET['q'],'admin') === 0) ? TRUE : FALSE;
+
+    // CSS aggregation is required for css3-mediaqueries.js to function properly.
+    if (!variable_get('preprocess_css') && $is_admin_page) {
+      drupal_set_message(t('Your responsive Fusion theme will not display properly in IE 6-8 until <a href="/admin/config/development/performance">CSS aggregation</a> is enabled.'), 'error');
+    }
+
+    $useragent = $_SERVER['HTTP_USER_AGENT'];
+    $old_ie = FALSE;
+
+    if (strpos($useragent, 'MSIE') !== FALSE && strpos($useragent, 'Opera') === FALSE && strpos($useragent, 'Netscape') === FALSE) {
+      if (preg_match("/Blazer\/([0-9]{1}\.[0-9]{1}(\.[0-9])?)/", $useragent, $matches)) {
+        // Do not treat this as IE.  This is the Palm browser, "Blazer".
+      }
+      elseif (preg_match("/MSIE ([0-9]{1}\.[0-9]{1,2})/", $useragent, $matches)) {
+        if ($matches[1] > 5 && $matches[1] < 9) {
+          $old_ie = TRUE;
+        }
+      }
+    }
+
+    if ($old_ie) {
+      if (!function_exists('libraries_load') && $is_admin_page){
+        drupal_set_message(t('The 7.x-2.x branch of <a href="http://drupal.org/project/libraries">Libraries API</a> is required for support of responsive layouts in IE 8 and below.'), 'error');
+      } else {
+        $library_info = libraries_load('css3-mediaqueries');
+        if ($library_info['loaded'] === FALSE && $is_admin_page) {
+          drupal_set_message(
+            t('The <a href="@link">css3-mediaqueries-js</a> library must be downloaded to support media queries in Internet Explorer prior to version 9.
+               Download and save css3-mediaqueries.js into sites/all/libraries/css3-mediaqueries, and Fusion will load the library when IE is detected.',
+               array('@link' => $library_info['download url'])
+            ),
+            'error');
+        }
+      }
+    }    
+  }
+}

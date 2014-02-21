@@ -1,0 +1,88 @@
+<?php
+
+/**
+ * @file
+ * Fusion Apply testing module.
+ *
+ * Other modules should be able to place their Fusion Apply support/integration code
+ * into a conditionally loaded $module.fusion.inc file, so this .module file
+ * only exists, because Drupal requires a .module file to exist.
+ */
+
+/**
+ * Implements hook_system_theme_info().
+ *
+ * @see http://drupal.org/node/953336
+ */
+function fusion_apply_test_system_theme_info() {
+  $path = drupal_get_path('module', 'fusion_apply_test');
+  $test_themes = array('basetheme', 'subtheme', 'basetheme_other', 'subtheme_other');
+  foreach ($test_themes as $theme) {
+    $themes["fusion_apply_test_{$theme}"] = $path . "/themes/fusion_apply_test_{$theme}/fusion_apply_test_{$theme}.info";
+  }
+  return $themes;
+}
+
+/**
+ * Implements hook_fusion_apply_api_VERSION().
+ */
+function fusion_apply_test_fusion_apply_api_2() {
+  return array(
+    'directory' => 'skins',
+  );
+}
+
+//
+// Presave hooks
+//
+
+/**
+ * Implements hook_fusion_apply_skin_presave().
+ */
+function fusion_apply_test_fusion_apply_skin_presave() {
+  $_SESSION['fusion_apply_test'][] = (__FUNCTION__ . ' called');
+}
+
+//
+// Insert hooks
+//
+
+/**
+ * Implements hook_fusion_apply_skin_insert().
+ */
+function fusion_apply_test_fusion_apply_skin_insert() {
+  $_SESSION['fusion_apply_test'][] = (__FUNCTION__ . ' called');
+}
+
+//
+// Load hooks
+//
+
+/**
+ * Implements hook_fusion_apply_skin_load().
+ */
+function fusion_apply_test_fusion_apply_skin_load() {
+  $_SESSION['fusion_apply_test'][] = (__FUNCTION__ . ' called');
+}
+
+//
+// Update hooks
+//
+
+/**
+ * Implements hook_fusion_apply_skin_update().
+ */
+function fusion_apply_test_fusion_apply_skin_update() {
+  $_SESSION['fusion_apply_test'][] = (__FUNCTION__ . ' called');
+}
+
+//
+// Delete hooks
+//
+
+/**
+ * Implements hook_fusion_apply_skin_delete().
+ */
+function fusion_apply_test_fusion_apply_skin_delete() {
+  $_SESSION['fusion_apply_test'][] = (__FUNCTION__ . ' called');
+}
