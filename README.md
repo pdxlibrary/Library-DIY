@@ -107,8 +107,8 @@ Appendix
 
 Appendix A: Installing Library DIY in a location other than the default location
   ```
-  .htaccess changes – set the RewriteBase to "/" to install at the webroot or change {subdirectory} to the path 
-  where Library DIY is installed off of the webroot.
+  .htaccess changes – set the RewriteBase to "/" to install at the webroot or change 
+  {subdirectory} to the path where Library DIY is installed off of the webroot.
   
   # Modify the RewriteBase if you are using Drupal in a subdirectory or in a
   # VirtualDocumentRoot and the rewrite rules are not working properly.
