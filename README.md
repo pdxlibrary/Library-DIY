@@ -15,7 +15,7 @@ working system.
 
   ```
   cd /var/www/html
-  git clone git@libsrv2.lib.pdx.edu:web/library-diy.git diy
+  git clone https://github.com/pdxlibrary/Library-DIY.git diy
   cd diy
   git checkout master
   ```
