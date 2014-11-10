@@ -85,10 +85,11 @@ Drupal.behaviors.adminMenuCollapsePermissions = {
           });
         });
       });
-      // Get fragment from current URL.
-      var fragment = window.location.hash || '#';
       // Collapse all but the targeted permission rows set.
-      $modules.not(':has(' + fragment + ')').trigger('click.admin-menu');
+      if (window.location.hash.length) {
+        $modules = $modules.not(':has(' + window.location.hash + ')');
+      }
+      $modules.trigger('click.admin-menu');
     }
   }
 };
@@ -249,6 +250,144 @@ Drupal.admin.behaviors.hover = function (context, settings, $adminMenu) {
       }, 400);
     }
   );
+};
+
+/**
+ * Apply the search bar functionality.
+ */
+Drupal.admin.behaviors.search = function (context, settings, $adminMenu) {
+  // @todo Add a HTML ID.
+  var $input = $('input.admin-menu-search', $adminMenu);
+  // Initialize the current search needle.
+  var needle = $input.val();
+  // Cache of all links that can be matched in the menu.
+  var links;
+  // Minimum search needle length.
+  var needleMinLength = 2;
+  // Append the results container.
+  var $results = $('<div />').insertAfter($input);
+
+  /**
+   * Executes the search upon user input.
+   */
+  function keyupHandler() {
+    var matches, $html, value = $(this).val();
+    // Only proceed if the search needle has changed.
+    if (value !== needle) {
+      needle = value;
+      // Initialize the cache of menu links upon first search.
+      if (!links && needle.length >= needleMinLength) {
+        // @todo Limit to links in dropdown menus; i.e., skip menu additions.
+        links = buildSearchIndex($adminMenu.find('li:not(.admin-menu-action, .admin-menu-action li) > a'));
+      }
+      // Empty results container when deleting search text.
+      if (needle.length < needleMinLength) {
+        $results.empty();
+      }
+      // Only search if the needle is long enough.
+      if (needle.length >= needleMinLength && links) {
+        matches = findMatches(needle, links);
+        // Build the list in a detached DOM node.
+        $html = buildResultsList(matches);
+        // Display results.
+        $results.empty().append($html);
+      }
+    }
+  }
+
+  /**
+   * Builds the search index.
+   */
+  function buildSearchIndex($links) {
+    return $links
+      .map(function () {
+        var text = (this.textContent || this.innerText);
+        // Skip menu entries that do not contain any text (e.g., the icon).
+        if (typeof text === 'undefined') {
+          return;
+        }
+        return {
+          text: text,
+          textMatch: text.toLowerCase(),
+          element: this
+        };
+      });
+  }
+
+  /**
+   * Searches the index for a given needle and returns matching entries.
+   */
+  function findMatches(needle, links) {
+    var needleMatch = needle.toLowerCase();
+    // Select matching links from the cache.
+    return $.grep(links, function (link) {
+      return link.textMatch.indexOf(needleMatch) !== -1;
+    });
+  }
+
+  /**
+   * Builds the search result list in a detached DOM node.
+   */
+  function buildResultsList(matches) {
+    var $html = $('<ul class="dropdown admin-menu-search-results" />');
+    $.each(matches, function () {
+      var result = this.text;
+      var $element = $(this.element);
+
+      // Check whether there is a top-level category that can be prepended.
+      var $category = $element.closest('#admin-menu-wrapper > ul > li');
+      var categoryText = $category.find('> a').text()
+      if ($category.length && categoryText) {
+        result = categoryText + ': ' + result;
+      }
+
+      var $result = $('<li><a href="' + $element.attr('href') + '">' + result + '</a></li>');
+      $result.data('original-link', $(this.element).parent());
+      $html.append($result);
+    });
+    return $html;
+  }
+
+  /**
+   * Highlights selected result.
+   */
+  function resultsHandler(e) {
+    var $this = $(this);
+    var show = e.type === 'mouseenter' || e.type === 'focusin';
+    $this.trigger(show ? 'showPath' : 'hidePath', [this]);
+  }
+
+  /**
+   * Closes the search results and clears the search input.
+   */
+  function resultsClickHandler(e, link) {
+    var $original = $(this).data('original-link');
+    $original.trigger('mouseleave');
+    $input.val('').trigger('keyup');
+  }
+
+  /**
+   * Shows the link in the menu that corresponds to a search result.
+   */
+  function highlightPathHandler(e, link) {
+    if (link) {
+      var $original = $(link).data('original-link');
+      var show = e.type === 'showPath';
+      // Toggle an additional CSS class to visually highlight the matching link.
+      // @todo Consider using same visual appearance as regular hover.
+      $original.toggleClass('highlight', show);
+      $original.trigger(show ? 'mouseenter' : 'mouseleave');
+    }
+  }
+
+  // Attach showPath/hidePath handler to search result entries.
+  $results.delegate('li', 'mouseenter mouseleave focus blur', resultsHandler);
+  // Hide the result list after a link has been clicked, useful for overlay.
+  $results.delegate('li', 'click', resultsClickHandler);
+  // Attach hover/active highlight behavior to search result entries.
+  $adminMenu.delegate('.admin-menu-search-results li', 'showPath hidePath', highlightPathHandler);
+  // Attach the search input event handler.
+  $input.bind('keyup search', keyupHandler);
 };
 
 /**

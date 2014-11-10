@@ -89,7 +89,7 @@ function admin_menu_menu() {
   // Menu link callbacks.
   $items['admin_menu/toggle-modules'] = array(
     'page callback' => 'admin_menu_toggle_modules',
-    'access arguments' => array('administer site configuration'),
+    'access arguments' => array('administer modules'),
     'type' => MENU_CALLBACK,
     'file' => 'admin_menu.inc',
   );
@@ -182,10 +182,16 @@ function admin_menu_page_build(&$page) {
   // Destination query strings are applied via JS.
   $settings['destination'] = drupal_http_build_query(drupal_get_destination());
 
+  // Determine whether we need to show all components and disable all caches.
+  $complete = FALSE;
+  if (current_path() == 'admin/config/administration/admin_menu' && $_SERVER['REQUEST_METHOD'] == 'GET') {
+    $complete = TRUE;
+  }
+
   // If the client supports JavaScript and we have a cached menu for the current
   // user, only output the hash for the client-side HTTP cache callback URL.
   $cid = 'admin_menu:' . $user->uid . ':' . session_id() . ':' . $language->language;
-  if (!empty($_COOKIE['has_js']) && ($hash = admin_menu_cache_get($cid))) {
+  if (!$complete && !empty($_COOKIE['has_js']) && ($hash = admin_menu_cache_get($cid))) {
     $settings['hash'] = $hash;
     // The base path to use for cache requests depends on whether clean URLs
     // are enabled, whether Drupal runs in a sub-directory, and on the language
@@ -198,10 +204,10 @@ function admin_menu_page_build(&$page) {
   }
   // Otherwise, add the full menu to the page.
   else {
-    $page['page_bottom']['admin_menu']['#markup'] = admin_menu_output();
+    $page['page_bottom']['admin_menu']['#markup'] = admin_menu_output($complete);
   }
 
-  $replacements = module_invoke_all('admin_menu_replacements');
+  $replacements = module_invoke_all('admin_menu_replacements', $complete);
   if (!empty($replacements)) {
     $settings['replacements'] = $replacements;
   }
@@ -213,7 +219,7 @@ function admin_menu_page_build(&$page) {
     // @see http://drupal.org/node/1473548, http://drupal.org/node/1194528
     //$page['#attributes']['class'][] = 'admin-menu';
   }
-  if ($setting = variable_get('admin_menu_position_fixed', 0)) {
+  if ($setting = variable_get('admin_menu_position_fixed', 1)) {
     $settings['position_fixed'] = $setting;
 
     // In fixed positioning, supply a callback function for tableheader.js to
@@ -326,6 +332,9 @@ function admin_menu_cache_set($cid, $data) {
 function admin_menu_js_cache() {
   global $conf;
 
+  // Suppress Devel module.
+  $GLOBALS['devel_shutdown'] = FALSE;
+
   // Enforce page caching.
   $conf['cache'] = 1;
   drupal_page_is_cacheable(TRUE);
@@ -384,10 +393,17 @@ function admin_menu_deliver($page_callback_result) {
 /**
  * Implements hook_admin_menu_replacements().
  */
-function admin_menu_admin_menu_replacements() {
+function admin_menu_admin_menu_replacements($complete) {
   $items = array();
-  if ($user_count = admin_menu_get_user_count()) {
-    $items['.admin-menu-users a'] = $user_count;
+  // If the complete menu is output, then it is uncached and will contain the
+  // current counts already.
+  if (!$complete) {
+    // Check whether the users count component is enabled.
+    $components = variable_get('admin_menu_components', array());
+    if (!empty($components['admin_menu.users']) && ($user_count = admin_menu_get_user_count())) {
+      // Replace the counters in the cached menu output with current counts.
+      $items['.admin-menu-users a'] = $user_count;
+    }
   }
   return $items;
 }
@@ -434,11 +450,16 @@ function admin_menu_session_count($timestamp = 0, $anonymous = TRUE) {
 
 /**
  * Build the administration menu output.
+ *
+ * @param bool $complete
+ *   (optional) Whether to build to the complete menu including all components
+ *   and ignore the cache. Defaults to FALSE. Internally used for the settings
+ *   page.
  */
-function admin_menu_output() {
+function admin_menu_output($complete = FALSE) {
   global $user, $language;
 
-  $cache_server_enabled = variable_get('admin_menu_cache_server', TRUE);
+  $cache_server_enabled = !$complete && variable_get('admin_menu_cache_server', TRUE);
   $cid = 'admin_menu:' . $user->uid . ':' . session_id() . ':' . $language->language;
 
   // Try to load and output administration menu from server-side cache.
@@ -458,6 +479,16 @@ function admin_menu_output() {
 
   // Rebuild the output.
   if (!isset($content)) {
+    // Retrieve enabled components to display and make them available for others.
+    $components = variable_get('admin_menu_components', array());
+    $components += array(
+      'admin_menu.menu' => TRUE,
+      'admin_menu.icon' => TRUE,
+      'admin_menu.account' => TRUE,
+    );
+    $content['#components'] = $components;
+    $content['#complete'] = $complete;
+
     // Add site name as CSS class for development/staging theming purposes. We
     // leverage the cookie domain instead of HTTP_HOST to account for many (but
     // not all) multi-domain setups (e.g. language-based sub-domains).
@@ -475,15 +506,31 @@ function admin_menu_output() {
     // Load menu builder functions.
     module_load_include('inc', 'admin_menu');
 
+    // @todo Move the below callbacks into hook_admin_menu_build()
+    //   implementations (and $module.admin_menu.inc).
+
     // Add administration menu.
-    $content['menu'] = admin_menu_links_menu(admin_menu_tree('management'));
-    $content['menu']['#theme'] = 'admin_menu_links';
-    // Ensure the menu tree is rendered between the icon and user links.
-    $content['menu']['#weight'] = 0;
+    if (!empty($components['admin_menu.menu']) || $complete) {
+      $content['menu'] = admin_menu_links_menu(admin_menu_tree('management'));
+      $content['menu']['#theme'] = 'admin_menu_links';
+      $content['menu']['#wrapper_attributes']['id'] = 'admin-menu-menu';
+      // Ensure the menu tree is rendered between the icon and user links.
+      $content['menu']['#weight'] = 0;
+    }
 
     // Add menu additions.
-    $content['icon'] = admin_menu_links_icon();
-    $content['user'] = admin_menu_links_user();
+    if (!empty($components['admin_menu.icon']) || $complete) {
+      $content['icon'] = admin_menu_links_icon();
+    }
+    if (!empty($components['admin_menu.account']) || $complete) {
+      $content['account'] = admin_menu_links_account();
+    }
+    if (!empty($components['admin_menu.users']) || $complete) {
+      $content['users'] = admin_menu_links_users();
+    }
+    if (!empty($components['admin_menu.search']) || $complete) {
+      $content['search'] = admin_menu_links_search();
+    }
 
     // Allow modules to enhance the menu.
     // Uses '_output' suffix for consistency with the alter hook (see below).
@@ -506,7 +553,7 @@ function admin_menu_output() {
   }
 
   // Store the new hash for this user.
-  if (!empty($_COOKIE['has_js'])) {
+  if (!empty($_COOKIE['has_js']) && !$complete) {
     admin_menu_cache_set($cid, md5($content));
   }
 
@@ -517,6 +564,10 @@ function admin_menu_output() {
  * Implements hook_admin_menu_output_build().
  */
 function admin_menu_admin_menu_output_build(&$content) {
+  if (!isset($content['menu'])) {
+    return;
+  }
+
   // Unassign weights for categories below Configuration.
   // An alphabetical order is more natural for a dropdown menu.
   if (isset($content['menu']['admin/config'])) {
@@ -623,6 +674,7 @@ function theme_admin_menu_links($variables) {
     }
 
     $link = '';
+    // Handle menu links.
     if (isset($elements[$path]['#href'])) {
       // Strip destination query string from href attribute and apply a CSS class
       // for our JavaScript behavior instead.
@@ -631,21 +683,21 @@ function theme_admin_menu_links($variables) {
         $elements[$path]['#options']['attributes']['class'][] = 'admin-menu-destination';
       }
 
-      $link .= l($elements[$path]['#title'], $elements[$path]['#href'], $elements[$path]['#options']);
+      $link = l($elements[$path]['#title'], $elements[$path]['#href'], $elements[$path]['#options']);
     }
-    elseif (isset($elements[$path]['#title'])) {
+    // Handle plain text items, but do not interfere with menu additions.
+    elseif (!isset($elements[$path]['#type']) && isset($elements[$path]['#title'])) {
       if (!empty($elements[$path]['#options']['html'])) {
         $title = $elements[$path]['#title'];
       }
       else {
         $title = check_plain($elements[$path]['#title']);
       }
-      if (!empty($elements[$path]['#options']['attributes'])) {
-        $link .= '<span' . drupal_attributes($elements[$path]['#options']['attributes']) . '>' . $title . '</span>';
+      $attributes = '';
+      if (isset($elements[$path]['#options']['attributes'])) {
+        $attributes = drupal_attributes($elements[$path]['#options']['attributes']);
       }
-      else {
-        $link .= $title;
-      }
+      $link = '<span' . $attributes . '>' . $title . '</span>';
     }
 
     $output .= '<li' . drupal_attributes($elements[$path]['#attributes']) . '>';
@@ -655,7 +707,9 @@ function theme_admin_menu_links($variables) {
   // @todo #attributes probably required for UL, but already used for LI.
   // @todo Use $element['#children'] here instead.
   if ($output) {
-    $output = "\n" . '<ul class="dropdown">' . $output . '</ul>';
+    $elements['#wrapper_attributes']['class'][] = 'dropdown';
+    $attributes = drupal_attributes($elements['#wrapper_attributes']);
+    $output = "\n" . '<ul' . $attributes . '>' . $output . '</ul>';
   }
   return $output;
 }
@@ -665,12 +719,12 @@ function theme_admin_menu_links($variables) {
  */
 function admin_menu_element_sort($a, $b) {
   // @see element_sort()
-  $a_weight = (is_array($a) && isset($a['#weight'])) ? $a['#weight'] : 0;
-  $b_weight = (is_array($b) && isset($b['#weight'])) ? $b['#weight'] : 0;
+  $a_weight = isset($a['#weight']) ? $a['#weight'] : 0;
+  $b_weight = isset($b['#weight']) ? $b['#weight'] : 0;
   if ($a_weight == $b_weight) {
     // @see element_sort_by_title()
-    $a_title = (is_array($a) && isset($a['#title'])) ? $a['#title'] : '';
-    $b_title = (is_array($b) && isset($b['#title'])) ? $b['#title'] : '';
+    $a_title = isset($a['#title']) ? $a['#title'] : '';
+    $b_title = isset($b['#title']) ? $b['#title'] : '';
     return strnatcasecmp($a_title, $b_title);
   }
   return ($a_weight < $b_weight) ? -1 : 1;
@@ -723,6 +777,22 @@ function admin_menu_translated_menu_link_alter(&$item, $map) {
  *   (optional) A user ID to limit the cache flush to.
  */
 function admin_menu_flush_caches($uid = NULL) {
+  // A call to menu_rebuild() will trigger potentially thousands of calls into
+  // menu_link_save(), for which admin_menu has to implement the corresponding
+  // CRUD hooks, in order to take up any menu link changes, since any menu link
+  // change could affect the admin menu (which essentially is an aggregate) and
+  // since there is no other way to get notified about stale caches. The cache
+  // only needs to be flushed once though, so we prevent a ton of needless
+  // subsequent calls with this static.
+  // @see http://drupal.org/node/918538
+  $was_flushed = &drupal_static(__FUNCTION__, array());
+  // $uid can be NULL. PHP automatically converts that into '' (empty string),
+  // which is different to uid 0 (zero).
+  if (isset($was_flushed[$uid])) {
+    return;
+  }
+  $was_flushed[$uid] = TRUE;
+
   $cid = 'admin_menu:';
   if (isset($uid)) {
     $cid .= $uid . ':';
@@ -742,6 +812,7 @@ function admin_menu_flush_caches($uid = NULL) {
  */
 function admin_menu_form_alter(&$form, &$form_state, $form_id) {
   $global_flush_ids = array(
+    'admin_menu_theme_settings' => 1,
     // Update links for clean/non-clean URLs.
     'system_clean_url_settings' => 1,
     // Incorporate changed user permissions.
@@ -753,12 +824,12 @@ function admin_menu_form_alter(&$form, &$form_state, $form_id) {
   );
   if (isset($global_flush_ids[$form_id])) {
     $form['#submit'][] = 'admin_menu_form_alter_flush_cache_submit';
-  }
 
-  // Optionally limit the cache flush to a certain user ID.
-  $form_state['admin_menu_uid'] = NULL;
-  if ($form_id == 'user_profile_form') {
-    $form_state['admin_menu_uid'] = $form_state['user']->uid;
+    // Optionally limit the cache flush to a certain user ID.
+    $form_state['admin_menu_uid'] = NULL;
+    if ($form_id == 'user_profile_form') {
+      $form_state['admin_menu_uid'] = $form_state['user']->uid;
+    }
   }
 
   // UX: Add a confirmation to the permissions form to ask the user whether to

@@ -41,11 +41,21 @@ function hook_admin_menu_map() {
 /**
  * Add to the administration menu content before it is rendered.
  *
+ * Only use this hook to add new data to the menu structure. Use
+ * hook_admin_menu_output_alter() to *alter* existing data.
+ *
  * @param array $content
- *   A structured array suitable for drupal_render(), containing:
+ *   A structured array suitable for drupal_render(), potentially containing:
  *   - menu: The administrative menu of links below the path 'admin/*'.
  *   - icon: The icon menu.
- *   - user: The user items and links.
+ *   - account: The user account name and log out link.
+ *   - users: The user counter.
+ *   Additionally, these special properties:
+ *   - #components: The actual components contained in $content are configurable
+ *     and depend on the 'admin_menu_components' configuration value. #components
+ *     holds a copy of that for convenience.
+ *   - #complete: A Boolean indicating whether the complete menu should be built,
+ *     ignoring the current configuration in #components.
  *   Passed by reference.
  *
  * @see hook_admin_menu_output_alter()
@@ -55,45 +65,77 @@ function hook_admin_menu_map() {
  * @see theme_admin_menu_links()
  */
 function hook_admin_menu_output_build(&$content) {
+  // In case your implementation provides a configurable component, check
+  // whether the component should be displayed:
+  if (empty($content['#components']['shortcut.links']) && !$content['#complete']) {
+    return;
+  }
+
+  // Add new top-level item to the menu.
+  if (isset($content['menu'])) {
+    $content['menu']['myitem'] = array(
+      '#title' => t('My item'),
+      // #attributes are used for list items (LI).
+      '#attributes' => array('class' => array('mymodule-myitem')),
+      '#href' => 'mymodule/path',
+      // #options are passed to l().
+      '#options' => array(
+        'query' => drupal_get_destination(),
+        // Apply a class on the link (anchor).
+        'attributes' => array('class' => array('myitem-link-anchor')),
+      ),
+      // #weight controls the order of links in the resulting item list.
+      '#weight' => 50,
+    );
+  }
+  // Add link to the icon menu to manually run cron.
+  if (isset($content['icon'])) {
+    $content['icon']['myitem']['cron'] = array(
+      '#title' => t('Run cron'),
+      '#access' => user_access('administer site configuration'),
+      '#href' => 'admin/reports/status/run-cron',
+    );
+  }
 }
 
 /**
  * Change the administration menu content before it is rendered.
  *
+ * Only use this hook to alter existing data in the menu structure. Use
+ * hook_admin_menu_output_build() to *add* new data.
+ *
  * @param array $content
- *   A structured array suitable for drupal_render(), containing:
- *   - menu: The administrative menu of links below the path 'admin/*'.
- *   - icon: The icon menu.
- *   - user: The user items and links.
- *   Passed by reference.
+ *   A structured array suitable for drupal_render(). Passed by reference.
  *
  * @see hook_admin_menu_output_build()
- * @see admin_menu_links_menu()
- * @see admin_menu_links_icon()
- * @see admin_menu_links_user()
- * @see theme_admin_menu_links()
  */
 function hook_admin_menu_output_alter(&$content) {
-  // Add new top-level item.
-  $content['menu']['myitem'] = array(
-    '#title' => t('My item'),
-    // #attributes are used for list items (LI).
-    '#attributes' => array('class' => array('mymodule-myitem')),
-    '#href' => 'mymodule/path',
-    // #options are passed to l(). Note that you can apply 'attributes' for
-    // links (A) here.
-    '#options' => array(
-      'query' => drupal_get_destination(),
-    ),
-    // #weight controls the order of links in the resulting item list.
-    '#weight' => 50,
-  );
-  // Add link to manually run cron.
-  $content['menu']['myitem']['cron'] = array(
-    '#title' => t('Run cron'),
-    '#access' => user_access('administer site configuration'),
-    '#href' => 'admin/reports/status/run-cron',
-  );
+}
+
+/**
+ * Return content to be replace via JS in the cached menu output.
+ *
+ * @param bool $complete
+ *   A Boolean indicating whether all available components of the menu will be
+ *   output and the cache will be skipped.
+ *
+ * @return array
+ *   An associative array whose keys are jQuery selectors and whose values are
+ *   strings containing the replacement content.
+ */
+function hook_admin_menu_replacements($complete) {
+  $items = array();
+  // If the complete menu is output, then it is uncached and will contain the
+  // current counts already.
+  if (!$complete) {
+    // Check whether the users count component is enabled.
+    $components = variable_get('admin_menu_components', array());
+    if (!empty($components['admin_menu.users']) && ($user_count = admin_menu_get_user_count())) {
+      // Replace the counters in the cached menu output with current counts.
+      $items['.admin-menu-users a'] = $user_count;
+    }
+  }
+  return $items;
 }
 
 /**

@@ -16,7 +16,8 @@ html body.admin-menu {
 html body.admin-menu-with-shortcuts {
   margin-top: 65px !important;
 }
-body div#toolbar {
+/* Displace the core Toolbar, if concurrently output. */
+body div#toolbar.toolbar {
   top: 30px;
 }
 
@@ -28,11 +29,9 @@ body div#toolbar {
  */
 #admin-menu {
   font: normal small "Lucida Grande", Verdana, sans-serif;
-  margin: 0 -20px;
-  padding: 0 20px;
-  -moz-box-shadow: 0 3px 20px #000;
-  -webkit-box-shadow: 0 3px 20px #000;
-  box-shadow: 0 3px 20px #000;
+  -moz-box-shadow: 0 -10px 20px 13px #000;
+  -webkit-box-shadow: 0 -10px 20px 13px #000;
+  box-shadow: 0 -10px 20px 13px #000;
   right: 0;
   width: auto;
 }

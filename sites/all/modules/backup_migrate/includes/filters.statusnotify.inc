@@ -35,7 +35,13 @@ class backup_migrate_filter_statusnotify extends backup_migrate_filter {
       "#title" => t("Send an email if backup succeeds"),
       "#default_value" => @$settings['notify_success_enable'],
     );
-    $form['advanced']['notify_success_email'] = array(
+    $form['advanced']['notify_success_email_wrapper'] = array(
+      '#type' => 'backup_migrate_dependent',
+      '#dependencies' => array(
+        'filters[notify_success_enable]' => TRUE,
+      ),
+    );
+    $form['advanced']['notify_success_email_wrapper']['notify_success_email'] = array(
       "#type" => "textfield",
       "#title" => t("Email Address for Success Notices"),
       "#default_value" => @$settings['notify_success_email'],
@@ -45,7 +51,13 @@ class backup_migrate_filter_statusnotify extends backup_migrate_filter {
       "#title" => t("Send an email if backup fails"),
       "#default_value" => @$settings['notify_failure_enable'],
     );
-    $form['advanced']['notify_failure_email'] = array(
+    $form['advanced']['notify_failure_email_wrapper'] = array(
+      '#type' => 'backup_migrate_dependent',
+      '#dependencies' => array(
+        'filters[notify_failure_enable]' => TRUE,
+      ),
+    );
+    $form['advanced']['notify_failure_email_wrapper']['notify_failure_email'] = array(
       "#type" => "textfield",
       "#title" => t("Email Address for Failure Notices"),
       "#default_value" => @$settings['notify_failure_email'],

@@ -120,3 +120,14 @@ Appendix A: Installing Library DIY in a location other than the default location
   # uncomment the following line:
   RewriteBase /{subdirectory}
   ```
+
+Appendix B: Common Installation Errors
+
+1. http://server-name/diy/user is inaccessible
+
+  When the admin login page is inaccessible from an Ubuntu server, the cause is typically Apache mod_rewrite hasn't been enabled. 
+  ```
+  a2enmod rewrite
+  service apache2 restart
+  ```
+

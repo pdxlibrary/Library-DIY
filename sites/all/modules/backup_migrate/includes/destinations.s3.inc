@@ -12,7 +12,7 @@
  * @ingroup backup_migrate_destinations
  */
 class backup_migrate_destination_s3 extends backup_migrate_destination_remote {
-  var $supported_ops = array('scheduled backup', 'manual backup', 'restore', 'list files', 'configure', 'delete');
+  var $supported_ops = array('scheduled backup', 'manual backup', 'remote backup', 'restore', 'list files', 'configure', 'delete');
   var $s3 = NULL;
   var $cache_files = TRUE;
 

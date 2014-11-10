@@ -1,6 +1,20 @@
 (function($) {
 
 /**
+ * Live preview of Administration menu components.
+ */
+Drupal.behaviors.adminMenuLivePreview = {
+  attach: function (context, settings) {
+    $('input[name^="admin_menu_components"]', context).once('admin-menu-live-preview')
+      .change(function () {
+        var target = $(this).attr('rel');
+        $(target).toggle(this.checked);
+      })
+      .trigger('change');
+  }
+};
+
+/**
  * Automatically enables required permissions on demand.
  *
  * Many users do not understand that two permissions are required for the

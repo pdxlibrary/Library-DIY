@@ -124,8 +124,13 @@ function custom_breadcrumbs_panels_ctools_render_alter($info, $page, $data) {
       if ($breadcrumb = custom_breadcrumbs_select_breadcrumb($breadcrumbs, array('panel' => $info))) {
         $objs = array('panel' => $info);
         foreach ($contexts as $context) {
-          if ($context->type == 'node') {
+          if (is_array($context->type) && (in_array('node', $context->type) || in_array('entity:node', $context->type)) && isset($context->data)) {
             $objs['node'] = $context->data;
+          }
+        }
+        foreach ($handler->conf['display']->content as $pane) {
+          if ($pane->type == 'node') {
+            $objs['node'] =  node_load($pane->configuration['nid']);
           }
         }
         custom_breadcrumbs_set_breadcrumb($breadcrumb, $objs);
@@ -136,7 +141,7 @@ function custom_breadcrumbs_panels_ctools_render_alter($info, $page, $data) {
   }
 
   // Is this a taxonomy term template?
-  if (isset($task['admin path']) && ($task['admin path'] == "taxonomy/term/%term") && module_exists('custom_breadcrumbs_taxonomy') && variable_get('custom_breadcrumbs_taxonomy_panels', FALSE)) {
+  if (isset($task['admin path']) && ($task['admin path'] == "taxonomy/term/%taxonomy_term") && module_exists('custom_breadcrumbs_taxonomy') && variable_get('custom_breadcrumbs_taxonomy_panels', FALSE)) {
     module_load_include('inc', 'custom_breadcrumbs_taxonomy');
     foreach ($contexts as $context) {
       if (isset($context->data->tid)) {
@@ -149,8 +154,10 @@ function custom_breadcrumbs_panels_ctools_render_alter($info, $page, $data) {
 
   // Is this a node template?
   if (isset($task['admin path']) && ($task['admin path'] == "node/%node")) {
+
     $context = array_pop($contexts);
-    if ($context->type == 'node' && isset($context->data)) {
+    if (is_array($context->type)  && (in_array('node', $context->type) || in_array('entity:node', $context->type))
+       && isset($context->data)) {
       $node = $context->data;
       // Call hook_nodeapi for each Custom Breadcrumbs submodule in order of the module's weight.
       if (empty($module_weights)) {

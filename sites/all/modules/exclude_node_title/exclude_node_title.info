@@ -7,9 +7,9 @@ files[] = exclude_node_title.info
 files[] = exclude_node_title.module
 files[] = exclude_node_title.admin.inc
 
-; Information added by drupal.org packaging script on 2012-02-23
-version = "7.x-1.5"
+; Information added by Drupal.org packaging script on 2014-01-31
+version = "7.x-1.7"
 core = "7.x"
 project = "exclude_node_title"
-datestamp = "1329984945"
+datestamp = "1391152714"
 

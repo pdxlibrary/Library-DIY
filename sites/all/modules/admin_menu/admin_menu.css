@@ -34,7 +34,8 @@
   background: transparent url(images/icon_users.png) 90% center no-repeat;
   padding-right: 22px;
 }
-#admin-menu .dropdown .admin-menu-action {
+#admin-menu .dropdown .admin-menu-action,
+#admin-menu .dropdown .admin-menu-search {
   float: right;
 }
 #admin-menu .dropdown .admin-menu-action a {
@@ -57,31 +58,33 @@ body.admin-menu {
 #admin-menu .dropdown {
   position: static;
 }
-#admin-menu a {
+#admin-menu a,
+#admin-menu li > span {
   background: transparent none;
   border: none;
   color: #EEE;
   font-weight: normal;
-  text-align: left;
+  text-align: left; /* LTR */
   text-decoration: none;
 }
-#admin-menu .dropdown a {
-  border-right: 1px solid #323232;
+#admin-menu .dropdown a,
+#admin-menu .dropdown li > span {
+  border-right: 1px solid #323232; /* LTR */
   display: block;
   padding: 4px 8px;
 }
 #admin-menu .dropdown .admin-menu-tab a {
-  border-right: 1px solid #52565E;
+  border-right: 1px solid #52565E; /* LTR */
 }
 #admin-menu .dropdown li li a {
-  border-right: none;
+  border-right: none; /* LTR */
   border-top: 1px solid #323232;
 }
 
 /* All list items */
 #admin-menu .dropdown li {
   background-image: none;
-  float: left;
+  float: left; /* LTR */
   height: 100%;
   list-style-image: none;
   list-style-type: none;
@@ -108,7 +111,7 @@ body.admin-menu {
 #admin-menu .dropdown li ul {
   background: none;
   display: none;
-  left: -999em;
+  left: -999em; /* LTR */
   line-height: 1.2em;
   margin: 0;
   position: absolute;
@@ -117,7 +120,7 @@ body.admin-menu {
 
 /* Third-and-above-level lists */
 #admin-menu .dropdown li li.expandable ul {
-  margin: -20px 0 0 160px;
+  margin: -20px 0 0 160px; /* LTR */
 }
 
 #admin-menu .dropdown li:hover ul ul,
@@ -129,7 +132,7 @@ body.admin-menu {
 #admin-menu .dropdown li.iehover ul ul ul ul,
 #admin-menu .dropdown li.iehover ul ul ul ul ul {
   display: none;
-  left: -999em;
+  left: -999em; /* LTR */
 }
 
 /* Lists nested under hovered list items */
@@ -144,10 +147,10 @@ body.admin-menu {
 #admin-menu .dropdown li li li li.iehover ul,
 #admin-menu .dropdown li li li li li.iehover ul {
   display: block;
-  left: auto;
+  left: auto; /* LTR */
 }
 #admin-menu .dropdown li.admin-menu-action:hover ul {
-  right: 0;
+  right: 0; /* LTR */
 }
 
 /* Second-and-more-level hovering */
@@ -182,6 +185,42 @@ body.admin-menu {
 #admin-menu .dropdown li li.iehover li.iehover li.iehover a {
   color: #FFF;
   width: 90%; /* IE */
+}
+
+/* Search form */
+#admin-menu .admin-menu-search .form-item {
+  margin: 0;
+  padding: 0;
+}
+#admin-menu .admin-menu-search input {
+  background: #fff none center right no-repeat;
+  border: none;
+  -webkit-border-radius: 5px;
+  -moz-border-radius: 5px;
+  border-radius: 5px;
+  font-size: 10px;
+  margin: 1px 0;
+  outline: none;
+  padding: 2px 22px 2px 4px;
+  width: 158px;
+}
+
+#admin-menu .dropdown .admin-menu-search-results {
+  display: block !important;
+  left: auto !important;
+  top: 100%;
+}
+#admin-menu .admin-menu-search-results,
+#admin-menu .admin-menu-search-results li {
+  width: 186px;
+}
+
+#admin-menu li.highlight {
+  background-color: #eee !important;
+}
+#admin-menu li.highlight > a {
+  border-color: #ccc !important;
+  color: #111 !important;
 }
 
 /* #210615: Mozilla on Mac fix */

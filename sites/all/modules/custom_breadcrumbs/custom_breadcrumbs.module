@@ -661,7 +661,7 @@ function _custom_breadcrumbs_create_crumb_items($title, $original_path, $attribu
     }
     else {
       $crumbs[] = array(
-        'crumb' => $title,
+        'crumb' => check_plain($title),
         'title' => $title,
       );
     }

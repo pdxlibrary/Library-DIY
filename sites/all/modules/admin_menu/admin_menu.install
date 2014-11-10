@@ -32,6 +32,7 @@ function admin_menu_install() {
  */
 function admin_menu_uninstall() {
   // Delete variables.
+  variable_del('admin_menu_components');
   variable_del('admin_menu_devel_modules');
   variable_del('admin_menu_devel_modules_enabled');
   variable_del('admin_menu_devel_modules_skip');
@@ -102,7 +103,9 @@ function admin_menu_update_7303() {
  */
 function admin_menu_update_7304() {
   // Remove the custom menu used by 6.x-1.x.
-  db_delete('menu_custom')->condition('menu_name', 'admin_menu')->execute();
+  if (db_table_exists('menu_custom')) {
+    db_delete('menu_custom')->condition('menu_name', 'admin_menu')->execute();
+  }
 
   // 6.x-1.x cloned the entire link structure below the path 'admin' into a
   // separate 'menu_name' "admin_menu" with 'module' "admin_menu". 6.x-3.x and
