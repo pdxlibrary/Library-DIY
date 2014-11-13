@@ -80,7 +80,7 @@ working system.
   ```
   http://server-name/diy/user
   user: admin
-  pass: yiddy
+  pass: yiddiy
   ```
   
 8. Adding a custom header/footer (optional)
