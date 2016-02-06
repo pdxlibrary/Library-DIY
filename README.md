@@ -131,3 +131,9 @@ Appendix B: Common Installation Errors
   service apache2 restart
   ```
 
+2. MultiViews must be enabled in **Options** directive, for Table of Contents (/sitemap) to work.
+
+  When using the delivered "Table of Contents" links, the Apache server must use a configuration like:
+  ```
+  Options All MultiView
+  ```
