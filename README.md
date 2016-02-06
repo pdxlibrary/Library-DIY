@@ -59,14 +59,14 @@ working system.
   mkdir sites/default/files
   ```
 
-5. Set permissions on writable directories.
+5. Set permissions on writable directories; likely needs to be performed as root or using sudo.
 
   ```
   # Debian, Ubuntu, etc.
-  chown -R www-data.www-data diy/sites/default 
+  chown -R www-data.www-data sites/default 
 
   # RHEL, CentOS, etc.
-  chown -R apache.apache diy/sites/default
+  chown -R apache.apache sites/default
   ```
 
 6. Load the initial database tables.
@@ -135,5 +135,5 @@ Appendix B: Common Installation Errors
 
   When using the delivered "Table of Contents" links, the Apache server must use a configuration like:
   ```
-  Options All MultiView
+  Options All MultiViews
   ```
