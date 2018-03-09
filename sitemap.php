@@ -1,67 +1,56 @@
 <?php
 
-	require_once("sites/default/settings.php");
+        require_once("sites/default/settings.php");
 
-	// connect to database
-	function connect($databases)
-	{
-		$db_host = $databases["default"]["default"]["host"];
-		$db_user = $databases["default"]["default"]["username"];
-		$db_pass = $databases["default"]["default"]["password"];
-		$db_name = $databases["default"]["default"]["database"];
+        // connect to database
+        $db_host = $databases["default"]["default"]["host"];
+        $db_user = $databases["default"]["default"]["username"];
+        $db_pass = $databases["default"]["default"]["password"];
+        $db_name = $databases["default"]["default"]["database"];
 
-		if(!$link = mysql_connect($db_host, $db_user, $db_pass))
-		{
-			$result = 0;
-			print("Error connecting to MySQL Server [$db_host] with user account [$db_user]!<br>\n");
-		}
-		else
-		{
-			if(!$conn = mysql_select_db($db_name,$link))
-			{
-				print("error selecting database<br>\n");
-			}
-		}
-	}
+        $dsn = "mysql:host=$db_host;dbname=$db_name;charset=utf8";
+        $opt = array(
+                PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+        );
+        $pdo = new PDO($dsn,$db_user,$db_pass, $opt);
 
-	connect($databases);
-	
-	$select = "select * from url_alias";
-	$res = mysql_query($select);
-	while($row = mysql_fetch_object($res))
-	{
-		$urls[substr($row->source,5)] = $row->alias;
-	}
-		
-	
-	$select = "select * from field_data_field_list_title";
-	$res = mysql_query($select);
-	while($row = mysql_fetch_object($res))
-	{
-		$all_guides[$row->entity_id] = $row;
-	}
+        $select = "select * from url_alias";
+        $res = $pdo->query($select);
+        while($row = $res->fetch(PDO::FETCH_ASSOC))
+        {
+                $urls[substr($row['source'],5)] = $row['alias'];
+        }
 
-	
-	$select = "select * from field_data_field_guide_category";
-	$res = mysql_query($select);
-	while($row = mysql_fetch_object($res))
-	{
-		$all_child_guides[$row->entity_id][$row->field_guide_category_target_id] = $row;
-		$all_links[$row->field_guide_category_target_id][$row->entity_id] = $row;
-	}
 
-	$select = "select * from draggableviews_structure";
-	$res = mysql_query($select);
-	while($row = mysql_fetch_object($res))
-	{
-		$ordering[substr($row->args,2,-2)][$row->entity_id] = $row->weight;
-	}
-	foreach($ordering as $entity_id => $orders)
-	{
-		asort($ordering[$entity_id]);
-	}
+        $select = "select * from field_data_field_list_title";
+        $res = $pdo->query($select);
+        while($row = $res->fetch(PDO::FETCH_ASSOC))
+        {
+                $all_guides[$row['entity_id']] = $row;
+        }
 
-	
+
+        $select = "select * from field_data_field_guide_category";
+        $res = $pdo->query($select);
+        while($row = $res->fetch(PDO::FETCH_ASSOC))
+        {
+                $all_child_guides[$row['entity_id']][$row['field_guide_category_target_id']] = $row;
+                $all_links[$row['field_guide_category_target_id']][$row['entity_id']] = $row;
+        }
+
+        $select = "select * from draggableviews_structure";
+        $res = $pdo->query($select);
+        while($row = $res->fetch(PDO::FETCH_ASSOC))
+        {
+                $ordering[substr($row['args'],2,-2)][$row['entity_id']] = $row['weight'];
+        }
+        foreach($ordering as $entity_id => $orders)
+        {
+                asort($ordering[$entity_id]);
+        }
+
+
 ?>
 <title>DIY Table of Contents</title>
 <style>
@@ -80,7 +69,7 @@ div#breadcrumbs div.breadcrumb {padding: 5px 0 8px 0}
 
 <div id="PSUContent">
 
-			  
+
 <h1 style="margin-bottom:0">DIY Table of Contents</h1>
 <div id="breadcrumbs" class="breadcrumbs block">
 <div id="breadcrumbs-inner" class="breadcrumbs-inner gutter">
@@ -88,83 +77,83 @@ div#breadcrumbs div.breadcrumb {padding: 5px 0 8px 0}
 </div><!-- /breadcrumbs-inner -->
 </div>
 <?php
-	
-	print("<hr><ul>\n");
-	
-	$entity_id = 0;
-	$level = 0;
-	$section_ordering = array();
-	asort($ordering[$entity_id]);
-	foreach($ordering[$entity_id] as $child_entity_id => $order)
-	{
-		if(isset($all_links[$child_entity_id]))
-		{
-			print_child_guide($child_entity_id,false,($level+1));
-		}
-	}
-	print("</ul><hr>\n");
-	
-	$entity_id = 0;
-	$level = 0;
-	$section_ordering = array();
-	asort($ordering[$entity_id]);
-	print("<ul>\n");
-	foreach($ordering[$entity_id] as $child_entity_id => $order)
-	{
-		if(isset($all_links[$child_entity_id]))
-		{
-			print_child_guide($child_entity_id,true,($level+1));
-		}
-	}
-	print("</ul>\n");
-	
-	
-	function print_child_guide($entity_id,$recursive,$level)
-	{
-		global $urls, $all_links, $all_guides, $ordering, $count;
-		$guide = $all_guides[$entity_id];
-		
-		if($level < 3 || strcmp(strip_tags($guide->field_list_title_value),"These do not describe my need"))
-		{
-			if($recursive)
-			{
-				$name = "guide".$entity_id;
-				$link = $urls[$entity_id];
-				$label = "<div class='level$level'><img src='sites/all/themes/diy/i/dot.gif' style='padding-right:5px'>".strip_tags($guide->field_list_title_value)."</div>";
-			}
-			else
-			{
-				$name = "";
-				$link = "#guide$entity_id";
-				$label = "<div class='level$level'><img src='sites/all/themes/diy/i/down-arrow.gif'>".strip_tags($guide->field_list_title_value)."</div>";
-			}
-			print("<li><a name='$name' href='$link'>");
-			print("$label");
-			print("</a></li>\n");
-			if($recursive && isset($ordering[$entity_id]) && isset($all_links[$entity_id]))
-			{
-			// print_r($ordering[$entity_id]);
-			// print_r($all_links[$entity_id]);
-			// exit();
-				print("<ul>\n");
-				$section_ordering = array();
-				foreach($all_links[$entity_id] as $child_entity_id => $obj)
-				{
-					$section_ordering[$obj->entity_id] = $ordering[$entity_id][$obj->entity_id];
-				}
-				// print_r($section_ordering);
-				asort($section_ordering);
-				foreach($section_ordering as $child_entity_id => $order)
-				{
-					// print("order: $entity_id:<br>\n");
-					// print_r($child_entity_id);
-					// $count++;
-					// if($count > 20) exit();
-					print_child_guide($child_entity_id,$recursive,($level+1));
-				}
-				print("</ul>\n");
-			}
-		}
-	}
+
+        print("<hr><ul>\n");
+
+        $entity_id = 0;
+        $level = 0;
+        $section_ordering = array();
+        asort($ordering[$entity_id]);
+        foreach($ordering[$entity_id] as $child_entity_id => $order)
+        {
+                if(isset($all_links[$child_entity_id]))
+                {
+                        print_child_guide($child_entity_id,false,($level+1));
+                }
+        }
+        print("</ul><hr>\n");
+
+        $entity_id = 0;
+        $level = 0;
+        $section_ordering = array();
+        asort($ordering[$entity_id]);
+        print("<ul>\n");
+        foreach($ordering[$entity_id] as $child_entity_id => $order)
+        {
+                if(isset($all_links[$child_entity_id]))
+                {
+                        print_child_guide($child_entity_id,true,($level+1));
+                }
+        }
+        print("</ul>\n");
+
+
+        function print_child_guide($entity_id,$recursive,$level)
+        {
+                global $urls, $all_links, $all_guides, $ordering, $count;
+                $guide = $all_guides[$entity_id];
+
+                if($level < 3 || strcmp(strip_tags($guide['field_list_title_value']),"These do not describe my need"))
+                {
+                        if($recursive)
+                        {
+                                $name = "guide".$entity_id;
+                                $link = $urls[$entity_id];
+                                $label = "<div class='level$level'><img src='sites/all/themes/diy/i/dot.gif' style='padding-right:5px'>".strip_tags($guide['field_list_title_value'])."</div>";
+                        }
+                        else
+                        {
+                                $name = "";
+                                $link = "#guide$entity_id";
+                                $label = "<div class='level$level'><img src='sites/all/themes/diy/i/down-arrow.gif'>".strip_tags($guide['field_list_title_value'])."</div>";
+                        }
+                        print("<li><a name='$name' href='$link'>");
+                        print("$label");
+                        print("</a></li>\n");
+                        if($recursive && isset($ordering[$entity_id]) && isset($all_links[$entity_id]))
+                        {
+                        // print_r($ordering[$entity_id]);
+                        // print_r($all_links[$entity_id]);
+                        // exit();
+                                print("<ul>\n");
+                                $section_ordering = array();
+                                foreach($all_links[$entity_id] as $child_entity_id => $obj)
+                                {
+                                        $section_ordering[$obj['entity_id']] = $ordering[$entity_id][$obj['entity_id']];
+                                }
+                                // print_r($section_ordering);
+                                asort($section_ordering);
+                                foreach($section_ordering as $child_entity_id => $order)
+                                {
+                                        // print("order: $entity_id:<br>\n");
+                                        // print_r($child_entity_id);
+                                        // $count++;
+                                        // if($count > 20) exit();
+                                        print_child_guide($child_entity_id,$recursive,($level+1));
+                                }
+                                print("</ul>\n");
+                        }
+                }
+        }
 ?>
 </div>
