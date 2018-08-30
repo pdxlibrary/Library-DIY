@@ -22,7 +22,7 @@ working system.
 
 3. Configure Drupal.
 
-  a. Copy the the default settings file.
+  a. Copy the default settings file.
 
   ```
   cp sites/default/default.settings.php sites/default/settings.php
